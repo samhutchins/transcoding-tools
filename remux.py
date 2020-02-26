@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from os.path import basename
 from sys import exit
 from subprocess import run, PIPE
+from datetime import timedelta
 import os
 import json
 import shlex
@@ -85,9 +86,12 @@ def verify_tools():
 
 
 def inspect_file(file):
-    video, audio, subtitles = scan_media(file)
+    format, video, audio, subtitles = scan_media(file)
 
-    print(f"Video: {video['width']}x{video['height']}")
+    # duration in whole seconds
+    duration = int(float(format["duration"]))
+    print("Video:")
+    print(f"     {video['width']}x{video['height']}, {video['codec_name']}, {timedelta(seconds=duration)}")
     print("Audio streams:")
     for idx, audio_stream in enumerate(audio):
         tags = audio_stream.get("tags", {})
@@ -100,11 +104,11 @@ def inspect_file(file):
         language = tags.get("language", "undefined")
         count = tags.get("NUMBER_OF_FRAMES-eng", "unknown")
         forced = ", forced" if subtitle_stream['disposition']['forced'] else ""
-        print(f"  {idx + 1}: {language}, {count} elements{forced}")
+        print(f"  {idx + 1}: {language}, {subtitle_stream['codec_name']}, {count} elements{forced}")
 
 
 def remux_file(file, audio_tracks, subtitle_tracks, forced_subtitle, dry_run):
-    video, audio, subtitles = scan_media(file)
+    _, video, audio, subtitles = scan_media(file)
 
     if audio_tracks:
         for track in audio_tracks:
@@ -193,14 +197,14 @@ def scan_media(file):
     output = run(command, stdout=PIPE, stderr=PIPE).stdout
     media_info = json.loads(output)
 
+    format = media_info["format"]
     video = [s for s in media_info["streams"] if s["codec_type"] == "video"][0]
     audio = [s for s in media_info["streams"] if s["codec_type"] == "audio"]
     audio.sort(key=lambda a: a["index"])
     subtitles = [s for s in media_info["streams"] if s["codec_type"] == "subtitle"]
     subtitles.sort(key=lambda s: s["index"])
 
-    return video, audio, subtitles
-
+    return format, video, audio, subtitles
 
 if __name__ == "__main__":
     main()
