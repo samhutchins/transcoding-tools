@@ -99,7 +99,7 @@ def inspect_file(file):
         layout = audio_stream.get("channel_layout", None)
         if not layout:
             layout = "mono" if audio_stream["channels"] == 1 else "unknown"
-        print(f"  {idx + 1}: {language}, {audio_stream.get('channel_layout', 'mono')}, {audio_stream['codec_name']}")
+        print(f"  {idx + 1}: {language}, {layout}, {audio_stream['codec_name']}")
 
     print("Subtitle streams:")
     for idx, subtitle_stream in enumerate(subtitles):
