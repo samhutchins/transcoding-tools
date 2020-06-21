@@ -167,8 +167,8 @@ def remux_file(file, audio_tracks, subtitle_tracks, forced_subtitle, dry_run):
         "--default-track", first_audio_index,
     ] + forced_options + [
         "--video-tracks", video_index,
-        "--audio-tracks", audio_arg,
-        "--subtitle-tracks", subtitle_arg,
+        "--audio-tracks", audio_arg
+    ] + (["--subtitle-tracks", subtitle_arg] if subtitle_arg else []) + [
         "--no-buttons",
         "--no-attachments",
         "--no-track-tags",
