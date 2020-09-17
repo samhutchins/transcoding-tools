@@ -98,7 +98,12 @@ def inspect_file(file):
         language = tags.get("language", "undefined")
         layout = audio_stream.get("channel_layout", None)
         if not layout:
-            layout = "mono" if audio_stream["channels"] == 1 else "unknown"
+            if audio_stream["channels"] == 1:
+                layout = "mono"
+            elif audio_stream["channels"] == 2:
+                layout = "stereo"
+            else:
+                layout = "unknown"
 
         codec_name = audio_stream['codec_name']
         if codec_name == "dts":
