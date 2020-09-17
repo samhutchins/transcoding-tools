@@ -10,7 +10,7 @@ import json
 import shlex
 
 version = """\
-remux.py 2020.3
+remux.py 2020.4
 Copyright (c) 2020 Sam Hutchins\
 """
 
