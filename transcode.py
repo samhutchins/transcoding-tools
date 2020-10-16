@@ -14,7 +14,7 @@ import shlex
 import sys
 
 version = """\
-transcode.py 2020.1
+transcode.py 2020.5
 Copyright (c) 2020 Sam Hutchins\
 """
 
