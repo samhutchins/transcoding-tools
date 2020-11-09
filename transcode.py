@@ -3,7 +3,7 @@
 from argparse import ArgumentParser
 from os.path import basename
 from sys import exit
-from subprocess import Popen, PIPE, run, DEVNULL, STDOUT
+from subprocess import Popen, PIPE, run, DEVNULL, STDOUT, TimeoutExpired, CalledProcessError
 from functools import reduce
 from fractions import Fraction
 import os
@@ -414,7 +414,8 @@ class Transcoder:
 
 
     def run_command(self, command, log_file):
-        log_file.write(" ".join(map(lambda x: shlex.quote(x), command)) + "\n")
+        cmd_string = " ".join(map(lambda x: shlex.quote(x), command))
+        log_file.write(cmd_string + "\n")
         with Popen(command, stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True) as p:
             for line in p.stdout:
                 if line.startswith("Encoding:"):
@@ -424,6 +425,13 @@ class Transcoder:
                 else:
                     log_file.write(line)
                     log_file.flush()
+            
+            try:
+                if returncode := p.wait() != 0:
+                    raise CalledProcessError(returncode, cmd_string)
+            except (TimeoutExpired, CalledProcessError) as e:
+                log_file.write(f"Encoding failed: {e}\n")
+                exit(f"Encoding failed: {e}")
 
 
     def verify_tools(self):
