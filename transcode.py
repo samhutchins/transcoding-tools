@@ -51,6 +51,7 @@ Video options:
                     Disable deinterlacing
     --preserve-field-rate
                     Preserve field rate when deinterlacing. e.g., 50i -> 50p
+    --par X:Y       Override the pixel aspect ratio (default: same as input)
 
 Audio options:
     --audio TRACK[ TRACK...]|LANGUAGE[ LANGUAGE...]|all
@@ -85,6 +86,7 @@ class Transcoder:
         self.crop = "auto"
         self.deinterlace = "auto"
         self.preserve_field_rate = False
+        self.par = None
 
         self.stereo = False
         self.audio = ["1"]
@@ -109,6 +111,7 @@ class Transcoder:
         parser.add_argument("--deinterlace", action="store_true")
         parser.add_argument("--no-deinterlace", action="store_true")
         parser.add_argument("--preserve-field-rate", action="store_true")
+        parser.add_argument("--par", metavar="X:Y")
 
         parser.add_argument("--audio", metavar="TRACK[ TRACK...]|LANGUAGE[ LANGUAGE...]|all", nargs="+")
         parser.add_argument("--stereo", action="store_true")
@@ -188,6 +191,12 @@ class Transcoder:
             self.deinterlace = False
 
         self.preserve_field_rate = args.preserve_field_rate
+
+        if args.par:
+            if re.match("[0-9]+:[0-9]+", args.par):
+                self.par = args.par
+            else:
+                exit(f"Invalid aspect ratio: {args.par}")
         
         self.stereo = args.stereo
         
@@ -254,6 +263,10 @@ class Transcoder:
 
     def get_video_args(self, media_info):
         args = ["--encoder", "x264"]
+
+        if self.par:
+            args += ["--pixel-aspect", self.par]
+
         if self.small:
             video_bitrates = {"1080p": 6000, "720p": 3000, "sd": 1500}
         else:
