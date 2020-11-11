@@ -340,7 +340,7 @@ class Transcoder:
             source_bitrate = int(source_bitrate) / 1000 if source_bitrate != "unknown" else sys.maxsize
 
             if self.stereo:
-                if source_channels <= 2 and source_codec in passthrough and source_bitrate <= audio_bitrates["stereo"]:
+                if source_channels <= 2 and source_codec in passthrough and source_bitrate <= audio_bitrates["stereo"] * 1.5:
                     encoders.append("copy")
                     mixdowns.append("")
                     bitrates.append("")
@@ -350,17 +350,20 @@ class Transcoder:
                     else:
                         mixdowns.append("")
                     
-                    encoders.append("fdk_aac")
+                    encoders.append("av_aac")
                     bitrates.append(str(audio_bitrates["stereo"] if source_channels >= 2 else audio_bitrates["mono"]))
             else:
                 if source_channels > 2:
                     key = "surround"
+                    multiplier = 1
                 elif source_channels == 2:
                     key = "stereo"
+                    multiplier = 1.5
                 else:
                     key = "mono"
+                    multiplier = 1.5
 
-                if source_codec in passthrough and source_bitrate <= audio_bitrates[key]:
+                if source_codec in passthrough and source_bitrate <= audio_bitrates[key] * multiplier:
                     encoders.append("copy")
                     mixdowns.append("")
                     bitrates.append("")
