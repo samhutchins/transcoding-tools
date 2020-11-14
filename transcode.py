@@ -102,8 +102,9 @@ class Transcoder:
         self.debug = False
 
         self.supported_encoders = {
-            "x264": {"name": "x264", "type": "hw", "encopts": "ratetol=inf:mbtree=0"},
-            "nvenc_h264": {"name": "nvenc_h264", "type": "sw", "encopts": "spatial-aq=1"}
+            "x264": {"name": "x264", "type": "sw", "encopts": "ratetol=inf:mbtree=0"},
+            "nvenc_h264": {"name": "nvenc_h264", "type": "hw", "encopts": "spatial-aq=1"},
+            "qsv_h264": {"name": "qsv_h264", "type": "hw", "encopts": None}
         }
 
         self.available_video_encoders = []
@@ -331,7 +332,9 @@ class Transcoder:
 
     def get_video_encoder(self):
         if self.hardware_encoder:
-            if "nvenc_h264" in self.available_video_encoders:
+            if "qsv_h264" in self.available_video_encoders:
+                encoder = self.supported_encoders["qsv_h264"]
+            elif "nvenc_h264" in self.available_video_encoders:
                 encoder = self.supported_encoders["nvenc_h264"]
             else:
                 exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
@@ -339,7 +342,11 @@ class Transcoder:
         else:
             encoder = self.supported_encoders["x264"]
 
-        return ["--encoder", encoder["name"], "--encopts", encoder["encopts"]]
+        args = ["--encoder", encoder["name"]]
+        if encoder["encopts"]:
+            args += ["--encopts", encoder["encopts"]]
+        
+        return args
 
 
     def get_audio_args(self, media_info):
