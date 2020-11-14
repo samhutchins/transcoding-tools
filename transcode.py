@@ -313,8 +313,8 @@ class Transcoder:
             exit()
         
         print("Transcoding...")
-        log_file = open(f"{output_file}.log", "a")
-        self.run_command(command, log_file)
+        log_file = open(f"{output_file}.log", "ab")
+        self.run_command(command, log_file, capture_stdout=False)
 
         print("Postprocessing...")
         if added_subs:
@@ -529,23 +529,20 @@ class Transcoder:
         return args, selected_tracks
 
 
-    def run_command(self, command, log_file):
-        cmd_string = " ".join(map(lambda x: shlex.quote(x), command))
-        log_file.write(cmd_string + "\n")
-        with Popen(command, stdout=PIPE, stderr=STDOUT, bufsize=1, universal_newlines=True) as p:
-            for line in p.stdout:
-                if line.startswith("Encoding:"):
-                    print(line.strip(), end='\r')
-                elif line.startswith("Progress:"):
-                    print(line.strip(), end="\r")
-                else:
-                    log_file.write(line)
-                    log_file.flush()
+    def run_command(self, command, log_file, capture_stdout=True):
+        log_file.write((" ".join(map(lambda x: shlex.quote(x), command)) + "\n\n").encode("utf-8"))
+
+        stdout_redirect = None if not capture_stdout else PIPE
+        stderr_redirect = STDOUT if capture_stdout else PIPE
+        with Popen(command, stdout=stdout_redirect, stderr=stderr_redirect) as p:
+            for line in (p.stdout if capture_stdout else p.stderr):
+                log_file.write(line)
+                log_file.flush()
             
             try:
                 p.wait()
             except TimeoutExpired as e:
-                log_file.write(f"Encoding failed: {e}\n")
+                log_file.write(f"Encoding failed: {e}\n".encode("utf-8"))
                 exit(f"Encoding failed: {e}")
 
 
