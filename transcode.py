@@ -24,13 +24,13 @@ Transcode Blu Ray and DVD rips to smaller, Plex friendly, versions.
 Usage = {basename(__file__)} FILE [OPTION...]
 
 Creates an `mkv` file in the current directory. The video will be converted to
-h.264, averaging 8000kb/s. The first audio track will be transcoded with up to
-6 channels (5.1) at 640kb/s surround AC3, 192kb/s stereo AAC, or 96kb/s mono
-AAC. Any subtitles in the same language as the main audio will be included in
-their original format, and forced subtitles will be burned in. If the input is
-interlaced it will be deinterlaced, and the video will be cropped automatically
-to remove black bars. Track selection, cropping, deinterlacing, and burning can
-be controlled by the options documented below.
+h.264, averaging up to 8000kb/s (dependent on resolution). The first audio track
+will be transcoded with up to 6 channels (5.1) at 640kb/s surround AC3, 192kb/s
+stereo AAC, or 96kb/s mono AAC. Any subtitles in the same language as the main
+audio will be included in their original format, and forced subtitles will be
+burned in. If the input is interlaced it will be deinterlaced, and the video
+will be cropped automatically to remove black bars. Track selection, cropping,
+deinterlacing, and burning can be controlled by the options documented below.
 
 Input options:
     --scan          scan the input and exit
@@ -40,7 +40,8 @@ Input options:
 
 Output options:
     --small         Lower bitrate targets
-    --hevc          Output h.265 (hevc) instead of h.264
+    --hevc          Output h.265 (hevc) instead of h.264. This will also reduce
+                      the target bitrate
 
 Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
