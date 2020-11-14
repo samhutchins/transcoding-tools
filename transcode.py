@@ -38,11 +38,15 @@ Input options:
     --position MM:SS
                     The time in the input file to start at
 
-Output option:
+Output options:
     --small         Lower bitrate targets
-    --quick         Trade off some quality for more speed
 
-Video options:
+Encoder options:
+    --hardware-encoder
+                    Use a hardware encoder. These are much faster, but generally
+                      lower quality
+
+Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
                     Specify cropping values (default: auto detected)
     --no-crop       Disable cropping
@@ -81,7 +85,8 @@ class Transcoder:
         self.start_time = None
         
         self.small = False
-        self.quick = False
+
+        self.hardware_encoder = False
 
         self.crop = "auto"
         self.deinterlace = "auto"
@@ -96,6 +101,14 @@ class Transcoder:
 
         self.debug = False
 
+        self.supported_encoders = {
+            "x264": {"name": "x264", "type": "hw", "encopts": "ratetol=inf:mbtree=0"},
+            "nvenc_h264": {"name": "nvenc_h264", "type": "sw", "encopts": "spatial-aq=1"}
+        }
+
+        self.available_video_encoders = []
+
+
     def run(self):
         parser = ArgumentParser(add_help=False)
         parser.add_argument("file", nargs="?")
@@ -104,7 +117,8 @@ class Transcoder:
         parser.add_argument("--position", metavar="MM:SS")
         
         parser.add_argument("--small", action="store_true")
-        parser.add_argument("--quick", action="store_true")
+
+        parser.add_argument("--hardware-encoder", action="store_true")
 
         parser.add_argument("--crop", metavar="TOP:BOTTOM:LEFT:RIGHT")
         parser.add_argument("--no-crop", action="store_true")
@@ -126,8 +140,20 @@ class Transcoder:
         parser.add_argument("--version", action="store_true")
 
         args = parser.parse_args()
-        self.validate_args(args)
+
+        self.debug = args.debug
+        self.dry_run = args.dry_run
+
+        if args.version:
+            print(version)
+            exit()
+
+        if args.help:
+            print(help)
+            exit()
+
         self.verify_tools()
+        self.validate_args(args)
 
         output_file = os.path.splitext(basename(args.file))[0] + ".mkv"
         if not self.dry_run and os.path.exists(output_file):
@@ -142,14 +168,6 @@ class Transcoder:
         self.transcode(media_info, output_file)
 
     def validate_args(self, args):
-        if args.version:
-            print(version)
-            exit()
-
-        if args.help:
-            print(help)
-            exit()
-
         if not args.file:
             exit(f"Missing argument: file. Try `{basename(__file__)} --help` for more information")
 
@@ -158,8 +176,6 @@ class Transcoder:
         
         if os.path.isdir(args.file):
             exit(f"Input cannot be a directory: {args.file}")
-
-        self.dry_run = args.dry_run
 
         if args.position:
             pattern = re.compile("([0-9]{1,2}):([0-9]{2})")
@@ -173,7 +189,18 @@ class Transcoder:
                 exit(f"Invalid position: {args.position}")
 
         self.small = args.small
-        self.quick = args.quick
+
+        if args.hardware_encoder:
+            has_hardware_encoder = False
+            for encoder in self.supported_encoders:
+                if self.supported_encoders[encoder]["type"] == "hw" and encoder in self.available_video_encoders:
+                    has_hardware_encoder = True
+                    break
+            
+            if has_hardware_encoder:
+                self.hardware_encoder = True
+            else:
+                exit("No supported hardware encoders found")
 
         if args.crop:
             if re.match("[0-9]+:[0-9]+:[0-9]+:[0-9]+", args.crop):
@@ -225,8 +252,6 @@ class Transcoder:
         if args.no_subtitles:
             self.subtitles = []
 
-        self.debug = args.debug
-
 
     def transcode(self, media_info, output_file):
         input_file = media_info["filename"]
@@ -262,48 +287,58 @@ class Transcoder:
 
 
     def get_video_args(self, media_info):
-        args = ["--encoder", "x264"]
+        args = []
 
         if self.par:
             args += ["--pixel-aspect", self.par]
+        
+        if self.crop:
+            args += ["--crop", (media_info["video"]["detected_crop"] if self.crop == "auto" else self.crop)]
+
+        framerate = media_info["video"]["fps"]
+        interlacing_args = []
+        if self.deinterlace == True or media_info["video"]["stored_interlaced"]:
+            if self.preserve_field_rate:
+                interlacing_args = ["--deinterlace=bob"]
+                framerate = framerate * 2
+            else:
+                interlacing_args = ["--comb-detect", "--decomb"]
+
+        args += interlacing_args
 
         if self.small:
             video_bitrates = {"1080p": 6000, "720p": 3000, "sd": 1500}
         else:
             video_bitrates = {"1080p": 8000, "720p": 4000, "sd": 2000}
 
+        hfr = framerate > 30
         if media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
             target_bitrate = video_bitrates["1080p"]
+            level = "4.0" if not hfr else "4.2"
         elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
             target_bitrate = video_bitrates["720p"]
+            level = "3.1" if not hfr else "3.2"
         else:
             target_bitrate = video_bitrates["sd"]
+            level = "3.0" if not hfr else "3.1"
 
-        args += ["--vb", str(target_bitrate)]
-
-        encoder_options = "ratetol=inf:mbtree=0"
-        if self.quick:
-            encoder_options += ":analyse=none:ref=1:rc-lookahead=30"
-
-        maxrate = target_bitrate * 3
-        bufsize = int(maxrate * 1.25)
-        encoder_options += f":vbv-maxrate={maxrate}:vbv-bufsize={bufsize}"
-
-        args += ["--encopts", encoder_options]
-
-        if self.crop:
-            args += ["--crop", (media_info["video"]["detected_crop"] if self.crop == "auto" else self.crop)]
-
-        interlacing_args = []
-        if self.deinterlace == True or media_info["video"]["stored_interlaced"]:
-            if self.preserve_field_rate:
-                interlacing_args = ["--deinterlace=bob"]
-            else:
-                interlacing_args = ["--comb-detect", "--decomb"]
-
-        args += interlacing_args
+        args += self.get_video_encoder()
+        args += ["--vb", str(int(target_bitrate)), "--encoder-level", level, "--encoder-profile", "high"]
         
         return args
+    
+
+    def get_video_encoder(self):
+        if self.hardware_encoder:
+            if "nvenc_h264" in self.available_video_encoders:
+                encoder = self.supported_encoders["nvenc_h264"]
+            else:
+                exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
+            
+        else:
+            encoder = self.supported_encoders["x264"]
+
+        return ["--encoder", encoder["name"], "--encopts", encoder["encopts"]]
 
 
     def get_audio_args(self, media_info):
@@ -443,9 +478,8 @@ class Transcoder:
                     log_file.flush()
             
             try:
-                if returncode := p.wait() != 0:
-                    raise CalledProcessError(returncode, cmd_string)
-            except (TimeoutExpired, CalledProcessError) as e:
+                p.wait()
+            except TimeoutExpired as e:
                 log_file.write(f"Encoding failed: {e}\n")
                 exit(f"Encoding failed: {e}")
 
@@ -465,6 +499,24 @@ class Transcoder:
                 run(command, stdout=DEVNULL, stderr=DEVNULL).check_returncode()
             except:
                 exit(f"`{command[0]}` not found")
+
+        handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
+
+        encoders = []
+        in_encoders_block = False
+        for line in handbrake_help.splitlines():
+
+            if "--encoder " in line:
+                in_encoders_block = True
+            elif in_encoders_block and "--" in line:
+                in_encoders_block = False
+            elif in_encoders_block:
+                encoders.append(line.strip())
+
+        if self.debug:
+            print(encoders)
+
+        self.available_video_encoders = encoders
 
 
     def scan_media(self, file):
