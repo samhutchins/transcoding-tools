@@ -40,6 +40,7 @@ Input options:
 
 Output options:
     --small         Lower bitrate targets
+    --hevc          Output h.265 (hevc) instead of h.264
 
 Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
@@ -84,6 +85,7 @@ class Transcoder:
         self.start_time = None
         
         self.small = False
+        self.hevc = False
 
         self.hw_accel = False
 
@@ -101,9 +103,42 @@ class Transcoder:
         self.debug = False
 
         self.supported_encoders = {
-            "x264": {"name": "x264", "type": "sw", "encopts": "ratetol=inf:mbtree=0"},
-            "nvenc_h264": {"name": "nvenc_h264", "type": "hw", "encopts": "spatial-aq=1"},
-            "qsv_h264": {"name": "qsv_h264", "type": "hw", "encopts": None}
+            "x264": {
+                "name": "x264",
+                "type": "sw",
+                "format": "avc",
+                "encopts": "ratetol=inf:mbtree=0"
+            },
+            "nvenc_h264": {
+                "name": "nvenc_h264",
+                "type": "hw",
+                "format": "avc",
+                "encopts": "spatial-aq=1"
+            },
+            "qsv_h264": {
+                "name": "qsv_h264",
+                "type": "hw",
+                "format": "avc",
+                "encopts": None
+            },
+            "x265": {
+                "name": "x265",
+                "type": "sw",
+                "format": "hevc",
+                "encopts": "ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2"
+            },
+            "nvenc_h265": {
+                "name": "nvenc_h265",
+                "type": "hw",
+                "format": "hevc",
+                "encopts": "spatial-aq=1"
+            },
+            "qsv_h265": {
+                "name": "qsv_h265",
+                "type": "hw",
+                "format": "hevc",
+                "encopts": None
+            }
         }
 
         self.available_video_encoders = []
@@ -117,6 +152,7 @@ class Transcoder:
         parser.add_argument("--position", metavar="MM:SS")
         
         parser.add_argument("--small", action="store_true")
+        parser.add_argument("--hevc", action="store_true")
 
         parser.add_argument("--hw-accel", action="store_true")
 
@@ -190,11 +226,14 @@ class Transcoder:
                 exit(f"Invalid position: {args.position}")
 
         self.small = args.small
+        self.hevc = args.hevc
 
         if args.hw_accel:
             has_hardware_encoder = False
-            for encoder in self.supported_encoders:
-                if self.supported_encoders[encoder]["type"] == "hw" and encoder in self.available_video_encoders:
+            format = "avc" if not self.hevc else "hevc"
+            for enc in self.supported_encoders:
+                encoder = self.supported_encoders[enc]
+                if encoder["type"] == "hw" and encoder["format"] == format and encoder["name"] in self.available_video_encoders:
                     has_hardware_encoder = True
                     break
             
@@ -307,7 +346,9 @@ class Transcoder:
 
         args += interlacing_args
 
-        if self.small:
+        if self.small and self.hevc:
+            video_bitrates = {"1080p": 5000, "720p": 2500, "sd": 1250}
+        elif self.small or self.hevc:
             video_bitrates = {"1080p": 6000, "720p": 3000, "sd": 1500}
         else:
             video_bitrates = {"1080p": 8000, "720p": 4000, "sd": 2000}
@@ -316,30 +357,41 @@ class Transcoder:
         bitrate_multiplier = 1 if not hfr else 1.2
         if media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
             target_bitrate = video_bitrates["1080p"] * bitrate_multiplier
-            level = "4.0" if not hfr else "4.2"
+            level = "4.0" if not hfr else ("4.1" if self.hevc else "4.2")
         elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
             target_bitrate = video_bitrates["720p"] * bitrate_multiplier
-            level = "3.1" if not hfr else "3.2"
+            level = "3.1" if not hfr else ("4.0" if self.hevc else "3.2")
         else:
             target_bitrate = video_bitrates["sd"] * bitrate_multiplier
             level = "3.0" if not hfr else "3.1"
 
         args += self.get_video_encoder()
-        args += ["--vb", str(int(target_bitrate)), "--encoder-level", level, "--encoder-profile", "high"]
+        args += ["--vb", str(int(target_bitrate)), "--encoder-level", level, "--encoder-profile", ("main" if self.hevc else "high")]
         
         return args
     
 
     def get_video_encoder(self):
-        if self.hw_accel:
-            if "qsv_h264" in self.available_video_encoders:
-                encoder = self.supported_encoders["qsv_h264"]
-            elif "nvenc_h264" in self.available_video_encoders:
-                encoder = self.supported_encoders["nvenc_h264"]
+        if self.hevc:
+            if self.hw_accel:
+                if "nvenc_h265" in self.available_video_encoders:
+                    encoder = self.supported_encoders["nvenc_h265"]
+                elif "qsv_h265" in self.available_video_encoders:
+                    encoder = self.supported_encoders["qsv_h265"]
+                else:
+                    exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
             else:
-                exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
+                encoder = self.supported_encoders["x265"]
         else:
-            encoder = self.supported_encoders["x264"]
+            if self.hw_accel:
+                if "qsv_h264" in self.available_video_encoders:
+                    encoder = self.supported_encoders["qsv_h264"]
+                elif "nvenc_h264" in self.available_video_encoders:
+                    encoder = self.supported_encoders["nvenc_h264"]
+                else:
+                    exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
+            else:
+                encoder = self.supported_encoders["x264"]
 
         args = ["--encoder", encoder["name"]]
         if encoder["encopts"]:
