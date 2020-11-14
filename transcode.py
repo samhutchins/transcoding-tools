@@ -73,6 +73,7 @@ Subtitle options:
     --no-subtitles  Disable added subtitles
 
 Other options:
+    --skip-remux    Don't remux the output after transcoding
 -d, --debug         print debug information
 -h, --help          print this message and exit
     --version       print version information and exit
@@ -101,6 +102,7 @@ class Transcoder:
         self.burned_sub = "auto"
         self.subtitles = "auto"
 
+        self.skip_remux = False
         self.debug = False
 
         self.supported_encoders = {
@@ -172,6 +174,7 @@ class Transcoder:
         parser.add_argument("--subtitles", metavar="TRACK[ TRACK...]|LANGUAGE[ LANGUAGE...]|all", nargs="+")
         parser.add_argument("--no-subtitles", action="store_true")
 
+        parser.add_argument("--skip-remux", action="store_true")
         parser.add_argument("-d", "--debug", action="store_true")
         parser.add_argument("-h", "--help", action="store_true")
         parser.add_argument("--version", action="store_true")
@@ -179,6 +182,7 @@ class Transcoder:
         args = parser.parse_args()
 
         self.debug = args.debug
+        self.skip_remux = args.skip_remux
         self.dry_run = args.dry_run
 
         if args.version:
@@ -320,9 +324,10 @@ class Transcoder:
         
             self.run_command(command, log_file)
 
-        os.rename(output_file, "tmp.mkv")
-        self.run_command(["mkvmerge", "-o", output_file, "tmp.mkv"], log_file)
-        os.remove("tmp.mkv")
+        if not self.skip_remux:
+            os.rename(output_file, "tmp.mkv")
+            self.run_command(["mkvmerge", "-o", output_file, "tmp.mkv"], log_file)
+            os.remove("tmp.mkv")
 
         log_file.close()
 
