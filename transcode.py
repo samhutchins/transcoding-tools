@@ -312,14 +312,15 @@ class Transcoder:
             video_bitrates = {"1080p": 8000, "720p": 4000, "sd": 2000}
 
         hfr = framerate > 30
+        bitrate_multiplier = 1 if not hfr else 1.2
         if media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
-            target_bitrate = video_bitrates["1080p"]
+            target_bitrate = video_bitrates["1080p"] * bitrate_multiplier
             level = "4.0" if not hfr else "4.2"
         elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
-            target_bitrate = video_bitrates["720p"]
+            target_bitrate = video_bitrates["720p"] * bitrate_multiplier
             level = "3.1" if not hfr else "3.2"
         else:
-            target_bitrate = video_bitrates["sd"]
+            target_bitrate = video_bitrates["sd"] * bitrate_multiplier
             level = "3.0" if not hfr else "3.1"
 
         args += self.get_video_encoder()
