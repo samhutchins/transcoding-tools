@@ -42,8 +42,7 @@ Output options:
     --small         Lower bitrate targets
 
 Encoder options:
-    --hardware-encoder
-                    Use a hardware encoder. These are much faster, but generally
+    --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
 
 Picture options:
@@ -86,7 +85,7 @@ class Transcoder:
         
         self.small = False
 
-        self.hardware_encoder = False
+        self.hw_accel = False
 
         self.crop = "auto"
         self.deinterlace = "auto"
@@ -119,7 +118,7 @@ class Transcoder:
         
         parser.add_argument("--small", action="store_true")
 
-        parser.add_argument("--hardware-encoder", action="store_true")
+        parser.add_argument("--hw-accel", action="store_true")
 
         parser.add_argument("--crop", metavar="TOP:BOTTOM:LEFT:RIGHT")
         parser.add_argument("--no-crop", action="store_true")
@@ -168,6 +167,7 @@ class Transcoder:
         
         self.transcode(media_info, output_file)
 
+
     def validate_args(self, args):
         if not args.file:
             exit(f"Missing argument: file. Try `{basename(__file__)} --help` for more information")
@@ -191,7 +191,7 @@ class Transcoder:
 
         self.small = args.small
 
-        if args.hardware_encoder:
+        if args.hw_accel:
             has_hardware_encoder = False
             for encoder in self.supported_encoders:
                 if self.supported_encoders[encoder]["type"] == "hw" and encoder in self.available_video_encoders:
@@ -199,7 +199,7 @@ class Transcoder:
                     break
             
             if has_hardware_encoder:
-                self.hardware_encoder = True
+                self.hw_accel = True
             else:
                 exit("No supported hardware encoders found")
 
@@ -331,14 +331,13 @@ class Transcoder:
     
 
     def get_video_encoder(self):
-        if self.hardware_encoder:
+        if self.hw_accel:
             if "qsv_h264" in self.available_video_encoders:
                 encoder = self.supported_encoders["qsv_h264"]
             elif "nvenc_h264" in self.available_video_encoders:
                 encoder = self.supported_encoders["nvenc_h264"]
             else:
                 exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
-            
         else:
             encoder = self.supported_encoders["x264"]
 
@@ -513,7 +512,6 @@ class Transcoder:
         encoders = []
         in_encoders_block = False
         for line in handbrake_help.splitlines():
-
             if "--encoder " in line:
                 in_encoders_block = True
             elif in_encoders_block and "--" in line:
