@@ -324,10 +324,16 @@ class Transcoder:
         
             self.run_command(command, log_file)
 
-        if not self.skip_remux:
-            os.rename(output_file, "tmp.mkv")
-            self.run_command(["mkvmerge", "-o", output_file, "tmp.mkv"], log_file)
-            os.remove("tmp.mkv")
+        if not self.skip_remux and os.path.exists(output_file):
+            tmp_file = "tmp.mkv"
+            i = 1
+            while os.path.exists(tmp_file):
+                tmp_file = f"tmp-{i}.mkv"
+                i += 1
+            
+            os.rename(output_file, tmp_file)
+            self.run_command(["mkvmerge", "-o", output_file, tmp_file], log_file)
+            os.remove(tmp_file)
 
         log_file.close()
 
