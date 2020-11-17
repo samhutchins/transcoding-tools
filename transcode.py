@@ -141,6 +141,30 @@ class Transcoder:
                 "type": "hw",
                 "format": "hevc",
                 "encopts": None
+            },
+            "vt_h264": {
+                "name": "vt_h264",
+                "type": "hw",
+                "format": "avc",
+                "encopts": None
+            },
+            "vt_h265": {
+                "name": "vt_h265",
+                "type": "hw",
+                "format": "hevc",
+                "encopts": None
+            },
+            "vce_h264": {
+                "name": "vce_h264",
+                "type": "hw",
+                "format": "avc",
+                "encopts": None
+            },
+            "vce_h265": {
+                "name": "vce_h265",
+                "type": "hw",
+                "format": "hevc",
+                "encopts": None
             }
         }
 
@@ -391,6 +415,10 @@ class Transcoder:
                     encoder = self.supported_encoders["nvenc_h265"]
                 elif "qsv_h265" in self.available_video_encoders:
                     encoder = self.supported_encoders["qsv_h265"]
+                elif "vce_h265" in self.available_video_encoders:
+                    encoder = self.supported_encoders["vce_h264"]
+                elif "vt_h265" in self.available_video_encoders:
+                    encoder = self.supported_encoders["vt_h265"]
                 else:
                     exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
             else:
@@ -401,6 +429,10 @@ class Transcoder:
                     encoder = self.supported_encoders["qsv_h264"]
                 elif "nvenc_h264" in self.available_video_encoders:
                     encoder = self.supported_encoders["nvenc_h264"]
+                elif "vce_h264" in self.available_video_encoders:
+                    encoder = self.supported_encoders["vce_h264"]
+                elif "vt_h264" in self.available_video_encoders:
+                    encoder = self.supported_encoders["vt_h264"]
                 else:
                     exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
             else:
