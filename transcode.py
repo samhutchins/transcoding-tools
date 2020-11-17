@@ -145,6 +145,7 @@ class Transcoder:
         }
 
         self.available_video_encoders = []
+        self.available_audio_encoders = []
 
 
     def run(self):
@@ -413,6 +414,18 @@ class Transcoder:
 
 
     def get_audio_args(self, media_info):
+        if "ca_aac" in self.available_audio_encoders:
+            aac_encoder = "ca_aac"
+        elif "fdk_aac" in self.available_audio_encoders:
+            aac_encoder = "fdk_aac"
+        elif "av_aac" in self.available_audio_encoders:
+            aac_encoder = "av_aac"
+        else:
+            exit("No AAC audio encoder found")
+
+        if "ac3" not in self.available_audio_encoders:
+            exit("No AC3 audio encoder found")
+
         if self.small:
             audio_bitrates = {"surround": 448, "stereo": 160, "mono": 80}
         else:
@@ -456,7 +469,7 @@ class Transcoder:
                     else:
                         mixdowns.append("")
                     
-                    encoders.append("av_aac")
+                    encoders.append(aac_encoder)
                     bitrates.append(str(audio_bitrates["stereo"] if source_channels >= 2 else audio_bitrates["mono"]))
             else:
                 if source_channels > 2:
@@ -477,7 +490,7 @@ class Transcoder:
                     if source_channels > 2:
                         encoders.append("ac3")
                     else:
-                        encoders.append("fdk_aac")
+                        encoders.append(aac_encoder)
                     mixdowns.append("")
                     bitrates.append(str(audio_bitrates[key]))
 
@@ -570,20 +583,29 @@ class Transcoder:
 
         handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
 
-        encoders = []
-        in_encoders_block = False
+        video_encoders = []
+        audio_encoders = []
+        in_video_encoders_block = False
+        in_audio_encoders_block = False
         for line in handbrake_help.splitlines():
             if "--encoder " in line:
-                in_encoders_block = True
-            elif in_encoders_block and "--" in line:
-                in_encoders_block = False
-            elif in_encoders_block:
-                encoders.append(line.strip())
+                in_video_encoders_block = True
+            elif "--aencoder " in line:
+                in_audio_encoders_block = True
+            elif (in_audio_encoders_block or in_video_encoders_block) and ("--" in line or "\"" in line):
+                in_video_encoders_block = False
+                in_audio_encoders_block = False
+            elif in_video_encoders_block:
+                video_encoders.append(line.strip())
+            elif in_audio_encoders_block:
+                audio_encoders.append(line.strip())
 
         if self.debug:
-            print(encoders)
+            print(video_encoders)
+            print(audio_encoders)
 
-        self.available_video_encoders = encoders
+        self.available_video_encoders = video_encoders
+        self.available_audio_encoders = audio_encoders
 
 
     def scan_media(self, file):
