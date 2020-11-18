@@ -110,7 +110,7 @@ class Transcoder:
                 "name": "x264",
                 "type": "sw",
                 "format": "avc",
-                "encopts": "ratetol=inf:mbtree=0"
+                "encopts": "ratetol=inf:mbtree=0:analyse=none:ref=1:rc-lookahead=30"
             },
             "nvenc_h264": {
                 "name": "nvenc_h264",
