@@ -371,6 +371,8 @@ class Transcoder:
         
         if self.crop:
             args += ["--crop", (media_info["video"]["detected_crop"] if self.crop == "auto" else self.crop)]
+        else:
+            args += ["--crop", "0:0:0:0"]
 
         framerate = media_info["video"]["fps"]
         interlacing_args = []
