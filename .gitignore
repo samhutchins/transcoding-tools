@@ -4,3 +4,7 @@
 !README.md
 !LICENSE
 !*.py
+
+!transcoding_tools/
+transcoding_tools/*
+!transcoding_tools/*.py

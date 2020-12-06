@@ -13,8 +13,10 @@ import pprint
 import shlex
 import sys
 
-version = """\
-transcode.py 2020.7
+from .__init__ import __version__
+
+version = f"""\
+transcode.py {__version__}
 Copyright (c) 2020 Sam Hutchins\
 """
 
@@ -808,5 +810,9 @@ class Transcoder:
         return f"{top}:{bottom}:{left}:{right}"
 
 
-if __name__ == "__main__":
+def main():
     Transcoder().run()
+
+
+if __name__ == "__main__":
+    main()

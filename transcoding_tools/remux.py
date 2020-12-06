@@ -9,8 +9,10 @@ import os
 import json
 import shlex
 
-version = """\
-remux.py 2020.7
+from .__init__ import __version__
+
+version = f"""\
+remux.py {__version__}
 Copyright (c) 2020 Sam Hutchins\
 """
 
