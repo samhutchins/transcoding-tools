@@ -112,7 +112,9 @@ class Transcoder:
                 "name": "x264",
                 "type": "sw",
                 "format": "avc",
-                "encopts": "ratetol=inf:mbtree=0:analyse=none:ref=1:rc-lookahead=30"
+                "encopts": "ratetol=inf:mbtree=0:analyse=none:ref=1:rc-lookahead=30",
+                "maxrate": 3,
+                "bufsize": 3.75
             },
             "nvenc_h264": {
                 "name": "nvenc_h264",
@@ -124,49 +126,45 @@ class Transcoder:
                 "name": "qsv_h264",
                 "type": "hw",
                 "format": "avc",
-                "encopts": None
             },
             "x265": {
                 "name": "x265",
                 "type": "sw",
                 "format": "hevc",
-                "encopts": "ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2"
+                "encopts": "ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2",
+                "maxrate": 1.5,
+                "bufsize": 2
             },
             "nvenc_h265": {
                 "name": "nvenc_h265",
                 "type": "hw",
                 "format": "hevc",
-                "encopts": "spatial-aq=1"
+                "encopts": "spatial-aq=1:temporal-aq=1"
             },
             "qsv_h265": {
                 "name": "qsv_h265",
                 "type": "hw",
                 "format": "hevc",
-                "encopts": None
             },
             "vt_h264": {
                 "name": "vt_h264",
                 "type": "hw",
                 "format": "avc",
-                "encopts": None
             },
             "vt_h265": {
                 "name": "vt_h265",
                 "type": "hw",
                 "format": "hevc",
-                "encopts": None
             },
             "vce_h264": {
                 "name": "vce_h264",
                 "type": "hw",
                 "format": "avc",
-                "encopts": None
             },
             "vce_h265": {
                 "name": "vce_h265",
                 "type": "hw",
                 "format": "hevc",
-                "encopts": None
             }
         }
 
@@ -406,13 +404,15 @@ class Transcoder:
             target_bitrate = video_bitrates["sd"] * bitrate_multiplier
             level = "3.0" if not hfr else "3.1"
 
-        args += self.get_video_encoder()
-        args += ["--vb", str(int(target_bitrate)), "--encoder-level", level, "--encoder-profile", ("main" if self.hevc else "high")]
+        target_bitrate = int(target_bitrate)
+
+        args += self.get_video_encoder(target_bitrate)
+        args += ["--vb", str(target_bitrate)]
         
         return args
     
 
-    def get_video_encoder(self):
+    def get_video_encoder(self, target_bitrate):
         if self.hevc:
             if self.hw_accel:
                 if "nvenc_h265" in self.available_video_encoders:
@@ -443,8 +443,25 @@ class Transcoder:
                 encoder = self.supported_encoders["x264"]
 
         args = ["--encoder", encoder["name"]]
-        if encoder["encopts"]:
-            args += ["--encopts", encoder["encopts"]]
+
+        encopts = ""
+        if "encopts" in encoder:
+            encopts += encoder["encopts"]
+
+        if "maxrate" in encoder:
+            if encopts:
+                encopts += ":"
+
+            encopts += f"vbv-maxrate={int(encoder['maxrate'] * target_bitrate)}"
+
+        if "bufsize" in encoder:
+            if encopts:
+                encopts += ":"
+
+            encopts += f"vbv-bufsize={int(encoder['bufsize'] * target_bitrate)}"
+
+        if encopts:
+            args += ["--encopts", encopts]
         
         return args
 
