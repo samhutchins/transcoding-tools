@@ -48,6 +48,8 @@ Output options:
 Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
+    --two-pass      Two-pass encoding
+    --hrd           Encode an HRD compliant stream
 
 Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
@@ -92,6 +94,7 @@ class Transcoder:
         self.hevc = False
 
         self.hw_accel = False
+        self.two_pass = False
 
         self.crop = "auto"
         self.deinterlace = "auto"
@@ -112,7 +115,7 @@ class Transcoder:
                 "name": "x264",
                 "type": "sw",
                 "format": "avc",
-                "encopts": "ratetol=inf:mbtree=0:analyse=none:ref=1:rc-lookahead=30",
+                "encopts": "ratetol=inf:mbtree=0",
                 "maxrate": 3,
                 "bufsize": 3.75
             },
@@ -183,6 +186,8 @@ class Transcoder:
         parser.add_argument("--hevc", action="store_true")
 
         parser.add_argument("--hw-accel", action="store_true")
+        parser.add_argument("--two-pass", action="store_true")
+        parser.add_argument("--hrd", action="store_true")
 
         parser.add_argument("--crop", metavar="TOP:BOTTOM:LEFT:RIGHT")
         parser.add_argument("--no-crop", action="store_true")
@@ -271,6 +276,18 @@ class Transcoder:
                 self.hw_accel = True
             else:
                 exit("No supported hardware encoders found")
+
+        self.two_pass = args.two_pass
+
+        if args.hrd:
+            self.supported_encoders["x264"]["encopts"] = "nal-hrd=vbr"
+            self.supported_encoders["x264"]["maxrate"] = 1.5
+            self.supported_encoders["x264"]["bufsize"] = 2
+
+            self.supported_encoders["x265"]["encopts"] += ":hrd=1"
+
+            self.supported_encoders["vce_h264"]["encopts"] = "enforce_hrd=1"
+            self.supported_encoders["vce_h265"]["encopts"] = "enforce_hrd=1"
 
         if args.crop:
             if re.match("[0-9]+:[0-9]+:[0-9]+:[0-9]+", args.crop):
@@ -408,6 +425,9 @@ class Transcoder:
 
         args += self.get_video_encoder(target_bitrate)
         args += ["--vb", str(target_bitrate)]
+
+        if self.two_pass:
+            args += ["--two-pass", "--turbo"]
         
         return args
     
