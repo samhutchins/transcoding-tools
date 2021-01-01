@@ -356,7 +356,7 @@ class Transcoder:
         
         print("Transcoding...")
         log_file = open(f"{output_file}.log", "ab")
-        self.run_command(command, log_file, capture_stdout=False)
+        transcode_success = self.run_command(command, log_file, capture_stdout=False)
 
         print("Postprocessing...")
         if added_subs:
@@ -378,6 +378,9 @@ class Transcoder:
             os.remove(tmp_file)
 
         log_file.close()
+
+        if not transcode_success:
+            exit("Transcode failed.")
 
 
     def get_video_args(self, media_info):
@@ -633,10 +636,17 @@ class Transcoder:
             
             try:
                 p.wait()
+                if p.returncode != 0:
+                    message = f"Command failed: {command[0]}, exit code: {p.returncode}"
+                    print(message)
+                    log_file.write(f"{message}\n".encode("utf-8"))
+                    return False
             except TimeoutExpired as e:
                 log_file.write(f"Encoding failed: {e}\n".encode("utf-8"))
                 exit(f"Encoding failed: {e}")
-
+                return False
+            
+        return True
 
     def verify_tools(self):
         print("Verifying tools...")
