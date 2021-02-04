@@ -37,8 +37,10 @@ deinterlacing, and burning can be controlled by the options documented below.
 Input options:
     --scan          scan the input and exit
     --dry-run       print the HandBrakeCLI command and exit
-    --position MM:SS
+    --start HH:MM:SS
                     The time in the input file to start at
+    --stop HH:MM:SS
+                    The time int he input file to stop at
 
 Output options:
     --small         Lower bitrate targets
@@ -89,6 +91,7 @@ class Transcoder:
     def __init__(self):
         self.dry_run = False
         self.start_time = None
+        self.stop_time = None
         
         self.small = False
         self.hevc = False
@@ -180,7 +183,8 @@ class Transcoder:
         parser.add_argument("file", nargs="?")
         parser.add_argument("--scan", action="store_true")
         parser.add_argument("--dry-run", action="store_true")
-        parser.add_argument("--position", metavar="MM:SS")
+        parser.add_argument("--start", metavar="HH:MM:SS")
+        parser.add_argument("--stop", metavar="HH:MM:SS")
         
         parser.add_argument("--small", action="store_true")
         parser.add_argument("--hevc", action="store_true")
@@ -249,16 +253,31 @@ class Transcoder:
         if os.path.isdir(args.file):
             exit(f"Input cannot be a directory: {args.file}")
 
-        if args.position:
-            pattern = re.compile("([0-9]{1,2}):([0-9]{2})")
-            match = pattern.match(args.position)
+        def get_time_in_seconds(timestamp):
+            pattern = re.compile("([0-9]{1,2}):([0-9]{1,2}):([0-9]{2})")
+            match = pattern.match(timestamp)
             if match:
-                minutes, seconds = map(lambda x: int(x), match.groups())
-                start_time = minutes * 60
-                start_time += seconds
+                hours, minutes, seconds = map(lambda x: int(x), match.groups())
+                time = hours * 60 * 60
+                time += minutes * 60
+                time += seconds
+                return time
+            else:
+                return None
+
+        if args.start:
+            start_time = get_time_in_seconds(args.start)
+            if start_time:
                 self.start_time = start_time
             else:
-                exit(f"Invalid position: {args.position}")
+                exit(f"Invalid start: {args.start}")
+
+        if args.stop:
+            stop_time = get_time_in_seconds(args.stop)
+            if stop_time:
+                self.stop_time = stop_time
+            else:
+                exit(f"Invalid stop: {args.stop}")
 
         self.small = args.small
         self.hevc = args.hevc
@@ -344,6 +363,7 @@ class Transcoder:
         input_file = media_info["filename"]
         command = ["HandBrakeCLI", "--input", input_file, "--output", output_file, "--markers"]
         command += (["--start-at", f"seconds:{self.start_time}"] if self.start_time else [])
+        command += (["--stop-at", f"seconds:{self.stop_time}"] if self.stop_time else [])
         command += self.get_video_args(media_info)
         audio_args, audio_language = self.get_audio_args(media_info)
         command += audio_args
