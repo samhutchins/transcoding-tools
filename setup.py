@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import setuptools
 import transcoding_tools
 
@@ -23,7 +25,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             'transcode=transcoding_tools.transcode:main',
-            'remux=transcoding_tools.remux:main'
+            'remux=transcoding_tools.remux:main',
+            'inspect=transcoding_tools.inspect:main'
         ]
     }
 )

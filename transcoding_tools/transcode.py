@@ -1,19 +1,16 @@
-#!/usr/bin/env python3
-
 from argparse import ArgumentParser
 from os.path import basename
 from sys import exit
-from subprocess import Popen, PIPE, run, DEVNULL, STDOUT, TimeoutExpired, CalledProcessError
+from subprocess import Popen, PIPE, run, DEVNULL, STDOUT, TimeoutExpired
 from functools import reduce
 from fractions import Fraction
 import os
-import json
 import re
-import pprint
 import shlex
 import sys
 
 from .__init__ import __version__
+from . import utils
 
 version = f"""\
 transcode.py {__version__}
@@ -23,7 +20,7 @@ Copyright (c) 2020 Sam Hutchins\
 help = f"""\
 Transcode Blu Ray and DVD rips to smaller, Plex friendly, versions.
 
-Usage = {basename(__file__)} FILE [OPTION...]
+Usage = transcode.py FILE [OPTION...]
 
 Creates an `mkv` file in the current directory. The video will be converted to
 h.264, averaging up to 8000kb/s (dependent on resolution). The first audio track
@@ -35,7 +32,6 @@ will be cropped automatically to remove black bars. Track selection, cropping,
 deinterlacing, and burning can be controlled by the options documented below.
 
 Input options:
-    --scan          scan the input and exit
     --dry-run       print the HandBrakeCLI command and exit
     --start HH:MM:SS
                     The time in the input file to start at
@@ -235,11 +231,6 @@ class Transcoder:
             exit(f"Output file exists: {output_file}")
 
         media_info = self.scan_media(args.file)
-
-        if args.scan:
-            pprint.pprint(media_info)
-            exit()
-        
         self.transcode(media_info, output_file)
 
 
@@ -669,20 +660,13 @@ class Transcoder:
         return True
 
     def verify_tools(self):
-        print("Verifying tools...")
-        commands = [
+        utils.verify_tools([
             ["ffprobe", "-version"],
             ["HandBrakeCLI", "--version"],
             ["mkvpropedit", "--version"],
             ["ffmpeg", "-version"],
             ["mkvmerge", "--version"]
-        ]
-
-        for command in commands:
-            try:
-                run(command, stdout=DEVNULL, stderr=DEVNULL).check_returncode()
-            except:
-                exit(f"`{command[0]}` not found")
+        ])
 
         handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
 
@@ -712,24 +696,13 @@ class Transcoder:
 
 
     def scan_media(self, file):
-        print("Scanning input...")
-        command = [
-            "ffprobe",
-            "-loglevel", "quiet",
-            "-show_format",
-            "-show_streams",
-            "-print_format", "json",
-            file
-        ]
-
-        output = run(command, stdout=PIPE, stderr=DEVNULL).stdout
-        ffprobe_result = json.loads(output)
+        ffprobe_result = utils.scan_media(file)
 
         if self.debug:
             print(ffprobe_result)
 
         if self.crop and self.crop == "auto":
-            detected_crop = self.detect_crop(ffprobe_result)
+            detected_crop = utils.detect_crop(ffprobe_result)
         else:
             detected_crop = "unknown"
 
@@ -754,132 +727,5 @@ class Transcoder:
         return media_info
 
 
-    # This algorithm is shamelessly taken from Don Melton's `other_video_transcoding` project: 
-    # https://github.com/donmelton/other_video_transcoding
-    def detect_crop(self, ffprobe_result):
-        print("Detecting crop...")
-        duration = float(ffprobe_result["format"]["duration"])
-        if duration < 2:
-            exit(f"Duration too short: {duration}")
-
-        steps = 10
-        interval = int(duration / (steps + 1))
-        target_interval = 5 * 60
-
-        if interval == 0:
-            steps = 1
-            interval = 1
-        elif interval > target_interval:
-            steps = int((duration / target_interval) - 1)
-            interval = int(duration / (steps + 1))
-
-        if self.debug:
-            print(f"Duration: {duration}. Steps: {steps}. Interval: {interval}.")
-
-        video = [s for s in ffprobe_result["streams"] if s["codec_type"] == "video"][0]
-        width = int(video["width"])
-        height = int(video["height"])
-
-        no_crop = {
-            "width": width,
-            "height": height,
-            "x": 0,
-            "y": 0
-        }
-
-        all_crop = {
-            "width": 0,
-            "height": 0,
-            "x": width,
-            "y": height
-        }
-
-        crop = all_crop.copy()
-        last_crop = crop.copy()
-        ignore_count = 0
-
-        path = ffprobe_result["format"]["filename"]
-
-        for step in range(1, steps + 1):
-            s_crop = all_crop.copy()
-            position = interval * step
-            if self.debug:
-                print(f"crop = {crop}")
-                print(f"step = {step}. position = {position}")
-
-            command = [
-                "ffmpeg",
-                "-hide_banner",
-                "-nostdin",
-                "-noaccurate_seek",
-                "-ss", str(position),
-                "-i", path,
-                "-frames:v", "15",
-                "-filter:v", "cropdetect=24:2",
-                "-an",
-                "-sn",
-                "-ignore_unknown",
-                "-f", "null",
-                "-"
-            ]
-
-            result = run(command, stdout=DEVNULL, stderr=PIPE).stderr.decode("utf-8")
-            for line in result.splitlines():
-                pattern = re.compile(".*crop=([0-9]+):([0-9]+):([0-9]+):([0-9]+)")
-                match = pattern.match(line)
-                if match:
-                    d_width, d_height, d_x, d_y = match.groups()
-                    if s_crop["width"] < int(d_width):
-                        s_crop["width"] = int(d_width)
-
-                    if s_crop["height"] < int(d_height):
-                        s_crop["height"] = int(d_height)
-
-                    if s_crop["x"] > int(d_x):
-                        s_crop["x"] = int(d_x)
-
-                    if s_crop["y"] > int(d_y):
-                        s_crop["y"] = int(d_y)
-
-                    if self.debug:
-                        print(line)
-
-            if s_crop == no_crop and last_crop != no_crop:
-                ignore_count += 1
-                if self.debug:
-                    print(f"Ignore crop: {s_crop}")
-            else:
-                if crop["width"] < s_crop["width"]:
-                    crop["width"] = s_crop["width"]
-
-                if crop["height"] < s_crop["height"]:
-                    crop["height"] = s_crop["height"]
-
-                if crop["x"] > s_crop["x"]:
-                    crop["x"] = s_crop["x"]
-
-                if crop["y"] > s_crop["y"]:
-                    crop["y"] = s_crop["y"]
-
-            last_crop = s_crop.copy()
-
-        if self.debug:
-            print(f"Ingore count: {ignore_count}")
-
-        if crop == all_crop or ignore_count > 2 or (ignore_count > 0 and (((crop["width"] + 2) == width and crop["height"] == height))):
-            crop = no_crop
-        
-        top = crop["y"]
-        bottom = height - top - crop["height"]
-        left = crop["x"]
-        right = width - left - crop["width"]
-
-        return f"{top}:{bottom}:{left}:{right}"
-
-
 def main():
     Transcoder().run()
-
-
-if __name__ == "__main__":
-    main()
