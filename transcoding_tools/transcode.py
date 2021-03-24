@@ -14,7 +14,7 @@ from . import utils
 
 version = f"""\
 transcode.py {__version__}
-Copyright (c) 2020 Sam Hutchins\
+Copyright (c) 2020,2021 Sam Hutchins\
 """
 
 help = f"""\
