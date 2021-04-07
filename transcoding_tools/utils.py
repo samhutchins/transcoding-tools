@@ -34,11 +34,15 @@ def get_video_stream(media_info):
 
 
 def get_audio_streams(media_info):
-    return [s for s in media_info["streams"] if s["codec_type"] == "audio"]
+    audio = [s for s in media_info["streams"] if s["codec_type"] == "audio"]
+    audio.sort(key=lambda a: a["index"])
+    return audio
 
 
 def get_subtitle_streams(media_info):
-    return [s for s in media_info["streams"] if s ["codec_type"] == "subtitle"]
+    subtitles = [s for s in media_info["streams"] if s ["codec_type"] == "subtitle"]
+    subtitles.sort(key=lambda s: s["index"])
+    return subtitles
 
 
 def is_interlaced_encoding(media_info):

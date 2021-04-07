@@ -126,17 +126,15 @@ def remux_file(file, audio_tracks, subtitle_tracks, forced_subtitle, dry_run):
     subtitle_arg = []
     forced_options = []
     if selected_subtitle_streams != None:
-        subtitle_arg += ["--subtitle-tracks"]
+        subtitle_arg += ["--subtitle-tracks", ",".join(map(lambda x: str(x["index"]), selected_subtitle_streams))]
         for subtitle_stream in selected_subtitle_streams:
             stream_index = str(subtitle_stream["index"])
-            subtitle_arg += [str(stream_index)]
-
-            if subtitle_stream != forced_subtitle_stream:
+            if subtitle_stream == forced_subtitle_stream:
+                forced_options += ["--default-track", f"{stream_index}:1"]
+                forced_options += ["--forced-track", f"{stream_index}:1"]
+            else:
                 forced_options += ["--default-track", f"{stream_index}:0"]
                 forced_options += ["--forced-track", f"{stream_index}:0"]
-            else:
-                forced_options += ["--default-track", stream_index]
-                forced_options += ["--forced-track", stream_index]
     else:
         subtitle_arg = ["--no-subtitles"]
 
@@ -153,9 +151,9 @@ def remux_file(file, audio_tracks, subtitle_tracks, forced_subtitle, dry_run):
         "--no-track-tags",
         "--no-global-tags"]
 
-    mkvmerge_command += forced_options
     mkvmerge_command += audio_arg
     mkvmerge_command += subtitle_arg
+    mkvmerge_command += forced_options
     mkvmerge_command += [file]
 
     print(" ".join(map(lambda x: shlex.quote(x), mkvmerge_command)))
