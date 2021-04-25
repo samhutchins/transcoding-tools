@@ -113,8 +113,9 @@ class Inspector:
             language = tags.get("language", "undefined")
             codec_name = f", {subtitle_stream['codec_name']}"
             count = f", {tags.get('NUMBER_OF_FRAMES-eng', 'unknown')} elements"
+            default = ", default" if subtitle_stream['disposition']['default'] else ""
             forced = ", forced" if subtitle_stream['disposition']['forced'] else ""
-            print(f"  {idx + 1}: {language}{codec_name}{count}{forced}")
+            print(f"  {idx + 1}: {language}{codec_name}{count}{default}{forced}")
 
 
 def main():
