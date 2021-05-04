@@ -42,6 +42,7 @@ Output options:
     --small         Lower bitrate targets
     --hevc          Output h.265 (hevc) instead of h.264. This will also reduce
                       the target bitrate
+    --10-bit        Output 10 bit video, if the encoder supports it
 
 Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
@@ -91,6 +92,7 @@ class Transcoder:
         
         self.small = False
         self.hevc = False
+        self.ten_bit = False
 
         self.hw_accel = False
         self.two_pass = False
@@ -184,6 +186,7 @@ class Transcoder:
         
         parser.add_argument("--small", action="store_true")
         parser.add_argument("--hevc", action="store_true")
+        parser.add_argument("--10-bit", dest="ten_bit", action="store_true")
 
         parser.add_argument("--hw-accel", action="store_true")
         parser.add_argument("--two-pass", action="store_true")
@@ -272,6 +275,7 @@ class Transcoder:
 
         self.small = args.small
         self.hevc = args.hevc
+        self.ten_bit = args.ten_bit
 
         if args.hw_accel:
             has_hardware_encoder = False
@@ -475,6 +479,12 @@ class Transcoder:
                     exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
             else:
                 encoder = self.supported_encoders["x264"]
+
+        if self.ten_bit:
+            if f"{encoder['name']}_10bit" in self.available_video_encoders:
+                encoder["name"] = f"{encoder['name']}_10bit"
+            else:
+                print(f"WARN: 10-bit output not supported by {encoder['name']}", file=sys.stderr)
 
         args = ["--encoder", encoder["name"]]
 
