@@ -463,8 +463,10 @@ class Transcoder:
                     encoder = self.supported_encoders["vt_h265"]
                 else:
                     exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
-            else:
+            elif "x265" in self.available_video_encoders:
                 encoder = self.supported_encoders["x265"]
+            else:
+                exit("No supported software HEVC encoders found")
         else:
             if self.hw_accel:
                 if "qsv_h264" in self.available_video_encoders:
