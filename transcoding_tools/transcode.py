@@ -453,10 +453,10 @@ class Transcoder:
     def get_video_encoder(self, target_bitrate):
         if self.hevc:
             if self.hw_accel:
-                if "nvenc_h265" in self.available_video_encoders:
-                    encoder = self.supported_encoders["nvenc_h265"]
-                elif "qsv_h265" in self.available_video_encoders:
+                if "qsv_h265" in self.available_video_encoders:
                     encoder = self.supported_encoders["qsv_h265"]
+                elif "nvenc_h265" in self.available_video_encoders:
+                    encoder = self.supported_encoders["nvenc_h265"]
                 elif "vce_h265" in self.available_video_encoders:
                     encoder = self.supported_encoders["vce_h264"]
                 elif "vt_h265" in self.available_video_encoders:
