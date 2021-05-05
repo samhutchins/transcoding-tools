@@ -269,6 +269,11 @@ class Transcoder:
         if args.stop:
             stop_time = get_time_in_seconds(args.stop)
             if stop_time:
+                start_time = self.start_time if self.start_time else 0
+                stop_time = stop_time - start_time
+                if stop_time < 1:
+                    exit("Stop time can't be before start")
+
                 self.stop_time = stop_time
             else:
                 exit(f"Invalid stop: {args.stop}")
