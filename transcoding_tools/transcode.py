@@ -39,12 +39,14 @@ Input options:
                     The time int he input file to stop at
 
 Output options:
-    --small         Lower bitrate targets
     --hevc          Output h.265 (hevc) instead of h.264. This will also reduce
                       the target bitrate
     --10-bit        Output 10 bit video
 
 Encoder options:
+    --target-bitrate big|small
+                    Tweak the target bitrates. Use `big` for higher than default
+                      bitrates, and `small` for lower ones.
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
     --two-pass      Two-pass encoding
@@ -90,8 +92,6 @@ class Transcoder:
         self.start_time = None
         self.stop_time = None
         
-        self.small = False
-        self.hevc = False
         self.two_pass = False
 
         self.crop = "auto"
@@ -108,8 +108,14 @@ class Transcoder:
         self.skip_remux = False
         self.debug = False
 
-        self.encoder = None
+        self.video_bitrate_index = 2
+        self.video_bitrate_ladder = {
+            "1080p": [4000, 6000, 8000, 12000],
+            "720p": [2000, 3000, 4000, 6000],
+            "sd": [1000, 1500, 2000, 3000]
+        }
 
+        self.encoder = None
         self.supported_encoders = {
             "x264": {
                 "name": "x264",
@@ -183,10 +189,10 @@ class Transcoder:
         parser.add_argument("--start", metavar="HH:MM:SS")
         parser.add_argument("--stop", metavar="HH:MM:SS")
         
-        parser.add_argument("--small", action="store_true")
         parser.add_argument("--hevc", action="store_true")
         parser.add_argument("--10-bit", dest="ten_bit", action="store_true")
 
+        parser.add_argument("--target-bitrate", metavar="big|small")
         parser.add_argument("--hw-accel", action="store_true")
         parser.add_argument("--two-pass", action="store_true")
         parser.add_argument("--hrd", action="store_true")
@@ -277,8 +283,17 @@ class Transcoder:
             else:
                 exit(f"Invalid stop: {args.stop}")
 
-        self.small = args.small
-        self.hevc = args.hevc
+        if args.target_bitrate:
+            if args.target_bitrate == "big":
+                self.video_bitrate_index += 1
+            elif args.target_bitrate == "small":
+                self.video_bitrate_index -= 1
+            else:
+                exit(f"Invalid bitrate target: {args.bitrate_target}")
+            
+        if args.hevc:
+            self.video_bitrate_index -= 1
+        
         if args.two_pass and args.hw_accel:
             exit("2-pass encoding is not supported by hardware encoders")
         
@@ -429,21 +444,14 @@ class Transcoder:
 
         args += interlacing_args
 
-        if self.small and self.hevc:
-            video_bitrates = {"1080p": 5000, "720p": 2500, "sd": 1250}
-        elif self.small or self.hevc:
-            video_bitrates = {"1080p": 6000, "720p": 3000, "sd": 1500}
-        else:
-            video_bitrates = {"1080p": 8000, "720p": 4000, "sd": 2000}
-
         hfr = framerate > 30
         bitrate_multiplier = 1 if not hfr else 1.2
         if media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
-            target_bitrate = video_bitrates["1080p"] * bitrate_multiplier
+            target_bitrate = self.video_bitrate_ladder["1080p"][self.video_bitrate_index] * bitrate_multiplier
         elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
-            target_bitrate = video_bitrates["720p"] * bitrate_multiplier
+            target_bitrate = self.video_bitrate_ladder["720p"][self.video_bitrate_index] * bitrate_multiplier
         else:
-            target_bitrate = video_bitrates["sd"] * bitrate_multiplier
+            target_bitrate = self.video_bitrate_ladder["sd"][self.video_bitrate_index] * bitrate_multiplier
 
         target_bitrate = int(target_bitrate)
 
