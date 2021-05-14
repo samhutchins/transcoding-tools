@@ -42,7 +42,7 @@ Output options:
     --small         Lower bitrate targets
     --hevc          Output h.265 (hevc) instead of h.264. This will also reduce
                       the target bitrate
-    --10-bit        Output 10 bit video, if the encoder supports it
+    --10-bit        Output 10 bit video
 
 Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
@@ -92,9 +92,6 @@ class Transcoder:
         
         self.small = False
         self.hevc = False
-        self.ten_bit = False
-
-        self.hw_accel = False
         self.two_pass = False
 
         self.crop = "auto"
@@ -111,6 +108,8 @@ class Transcoder:
         self.skip_remux = False
         self.debug = False
 
+        self.encoder = None
+
         self.supported_encoders = {
             "x264": {
                 "name": "x264",
@@ -120,17 +119,6 @@ class Transcoder:
                 "maxrate": 3,
                 "bufsize": 3.75
             },
-            "nvenc_h264": {
-                "name": "nvenc_h264",
-                "type": "hw",
-                "format": "avc",
-                "encopts": "spatial-aq=1"
-            },
-            "qsv_h264": {
-                "name": "qsv_h264",
-                "type": "hw",
-                "format": "avc",
-            },
             "x265": {
                 "name": "x265",
                 "type": "sw",
@@ -139,16 +127,27 @@ class Transcoder:
                 "maxrate": 1.5,
                 "bufsize": 2
             },
-            "nvenc_h265": {
-                "name": "nvenc_h265",
+            "qsv_h264": {
+                "name": "qsv_h264",
                 "type": "hw",
-                "format": "hevc",
-                "encopts": "spatial-aq=1:temporal-aq=1"
+                "format": "avc",
             },
             "qsv_h265": {
                 "name": "qsv_h265",
                 "type": "hw",
                 "format": "hevc",
+            },
+            "nvenc_h264": {
+                "name": "nvenc_h264",
+                "type": "hw",
+                "format": "avc",
+                "encopts": "spatial-aq=1"
+            },
+            "nvenc_h265": {
+                "name": "nvenc_h265",
+                "type": "hw",
+                "format": "hevc",
+                "encopts": "spatial-aq=1:temporal-aq=1"
             },
             "vt_h264": {
                 "name": "vt_h264",
@@ -280,26 +279,10 @@ class Transcoder:
 
         self.small = args.small
         self.hevc = args.hevc
-        self.ten_bit = args.ten_bit
+        if args.two_pass and args.hw_accel:
+            exit("2-pass encoding is not supported by hardware encoders")
+        
         self.two_pass = args.two_pass
-
-        if args.hw_accel:
-            if self.two_pass:
-                exit(f"2-pass encoding is not supported by hardware encoders")
-            
-            has_hardware_encoder = False
-            format = "avc" if not self.hevc else "hevc"
-            for enc in self.supported_encoders:
-                encoder = self.supported_encoders[enc]
-                if encoder["type"] == "hw" and encoder["format"] == format and encoder["name"] in self.available_video_encoders:
-                    has_hardware_encoder = True
-                    break
-            
-            if has_hardware_encoder:
-                self.hw_accel = True
-            else:
-                exit("No supported hardware encoders found")
-
 
         if args.hrd:
             self.supported_encoders["x264"]["encopts"] = "nal-hrd=vbr"
@@ -310,6 +293,22 @@ class Transcoder:
 
             self.supported_encoders["vce_h264"]["encopts"] = "enforce_hrd=1"
             self.supported_encoders["vce_h265"]["encopts"] = "enforce_hrd=1"
+
+        if args.ten_bit:
+            for key in self.supported_encoders:
+                self.supported_encoders[key]["name"] += "_10bit"
+
+        format = "avc" if not args.hevc else "hevc"
+        type = "sw" if not args.hw_accel else "hw"
+        for key in self.supported_encoders:
+            encoder = self.supported_encoders[key]
+            if (encoder["name"] in self.available_video_encoders
+                    and encoder["format"] == format
+                    and encoder["type"] == type):
+               self.encoder = encoder
+
+        if not self.encoder:
+            exit("No suitable video encoder found for requested settings")
 
         if args.crop:
             if re.match("[0-9]+:[0-9]+:[0-9]+:[0-9]+", args.crop):
@@ -446,73 +445,29 @@ class Transcoder:
 
         target_bitrate = int(target_bitrate)
 
-        args += self.get_video_encoder(target_bitrate)
-        args += ["--vb", str(target_bitrate)]
-
-        if self.two_pass:
-            args += ["--two-pass", "--turbo"]
-        
-        return args
-    
-
-    def get_video_encoder(self, target_bitrate):
-        if self.hevc:
-            if self.hw_accel:
-                if "qsv_h265" in self.available_video_encoders:
-                    encoder = self.supported_encoders["qsv_h265"]
-                elif "nvenc_h265" in self.available_video_encoders:
-                    encoder = self.supported_encoders["nvenc_h265"]
-                elif "vce_h265" in self.available_video_encoders:
-                    encoder = self.supported_encoders["vce_h264"]
-                elif "vt_h265" in self.available_video_encoders:
-                    encoder = self.supported_encoders["vt_h265"]
-                else:
-                    exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
-            elif "x265" in self.available_video_encoders:
-                encoder = self.supported_encoders["x265"]
-            else:
-                exit("No supported software HEVC encoders found")
-        else:
-            if self.hw_accel:
-                if "qsv_h264" in self.available_video_encoders:
-                    encoder = self.supported_encoders["qsv_h264"]
-                elif "nvenc_h264" in self.available_video_encoders:
-                    encoder = self.supported_encoders["nvenc_h264"]
-                elif "vce_h264" in self.available_video_encoders:
-                    encoder = self.supported_encoders["vce_h264"]
-                elif "vt_h264" in self.available_video_encoders:
-                    encoder = self.supported_encoders["vt_h264"]
-                else:
-                    exit("No supported hardware encoders found (and it wasn't caught in the verify step)")
-            else:
-                encoder = self.supported_encoders["x264"]
-
-        if self.ten_bit:
-            if f"{encoder['name']}_10bit" in self.available_video_encoders:
-                encoder["name"] = f"{encoder['name']}_10bit"
-            else:
-                print(f"WARN: 10-bit output not supported by {encoder['name']}", file=sys.stderr)
-
-        args = ["--encoder", encoder["name"]]
+        args += ["--encoder", self.encoder["name"], "--vb", str(target_bitrate)]
 
         encopts = ""
-        if "encopts" in encoder:
-            encopts += encoder["encopts"]
+        if "encopts" in self.encoder:
+            encopts += self.encoder["encopts"]
 
-        if "maxrate" in encoder:
+        if "maxrate" in self.encoder:
             if encopts:
                 encopts += ":"
 
-            encopts += f"vbv-maxrate={int(encoder['maxrate'] * target_bitrate)}"
+            encopts += f"vbv-maxrate={int(self.encoder['maxrate'] * target_bitrate)}"
 
-        if "bufsize" in encoder:
+        if "bufsize" in self.encoder:
             if encopts:
                 encopts += ":"
 
-            encopts += f"vbv-bufsize={int(encoder['bufsize'] * target_bitrate)}"
+            encopts += f"vbv-bufsize={int(self.encoder['bufsize'] * target_bitrate)}"
 
         if encopts:
             args += ["--encopts", encopts]
+
+        if self.two_pass:
+            args += ["--two-pass", "--turbo"]
         
         return args
 
