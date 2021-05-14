@@ -527,10 +527,7 @@ class Transcoder:
         if "ac3" not in self.available_audio_encoders:
             exit("No AC3 audio encoder found")
 
-        if self.small:
-            audio_bitrates = {"surround": 448, "stereo": 160, "mono": 80}
-        else:
-            audio_bitrates = {"surround": 640, "stereo": 192, "mono": 96}
+        audio_bitrates = {"surround": 640, "stereo": 192, "mono": 96}
 
         selected_tracks = []
         for track in self.audio:
