@@ -281,8 +281,12 @@ class Transcoder:
         self.small = args.small
         self.hevc = args.hevc
         self.ten_bit = args.ten_bit
+        self.two_pass = args.two_pass
 
         if args.hw_accel:
+            if self.two_pass:
+                exit(f"2-pass encoding is not supported by hardware encoders")
+            
             has_hardware_encoder = False
             format = "avc" if not self.hevc else "hevc"
             for enc in self.supported_encoders:
@@ -296,7 +300,6 @@ class Transcoder:
             else:
                 exit("No supported hardware encoders found")
 
-        self.two_pass = args.two_pass
 
         if args.hrd:
             self.supported_encoders["x264"]["encopts"] = "nal-hrd=vbr"
