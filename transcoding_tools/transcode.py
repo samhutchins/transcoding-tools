@@ -273,7 +273,6 @@ class Transcoder:
                 return True
             
         for encoder in self.supported_encoders:
-            print(encoder)
             if encoder_check(encoder):
                 self.encoder = encoder
                 if args.hrd:
