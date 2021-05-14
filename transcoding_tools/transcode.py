@@ -116,66 +116,22 @@ class Transcoder:
         }
 
         self.encoder = None
-        self.supported_encoders = {
-            "x264": {
-                "name": "x264",
-                "type": "sw",
-                "format": "avc",
-                "encopts": "ratetol=inf:mbtree=0",
-                "maxrate": 3,
-                "bufsize": 3.75
-            },
-            "x265": {
-                "name": "x265",
-                "type": "sw",
-                "format": "hevc",
-                "encopts": "ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2",
-                "maxrate": 1.5,
-                "bufsize": 2
-            },
-            "qsv_h264": {
-                "name": "qsv_h264",
-                "type": "hw",
-                "format": "avc",
-            },
-            "qsv_h265": {
-                "name": "qsv_h265",
-                "type": "hw",
-                "format": "hevc",
-            },
-            "nvenc_h264": {
-                "name": "nvenc_h264",
-                "type": "hw",
-                "format": "avc",
-                "encopts": "spatial-aq=1"
-            },
-            "nvenc_h265": {
-                "name": "nvenc_h265",
-                "type": "hw",
-                "format": "hevc",
-                "encopts": "spatial-aq=1:temporal-aq=1"
-            },
-            "vt_h264": {
-                "name": "vt_h264",
-                "type": "hw",
-                "format": "avc",
-            },
-            "vt_h265": {
-                "name": "vt_h265",
-                "type": "hw",
-                "format": "hevc",
-            },
-            "vce_h264": {
-                "name": "vce_h264",
-                "type": "hw",
-                "format": "avc",
-            },
-            "vce_h265": {
-                "name": "vce_h265",
-                "type": "hw",
-                "format": "hevc",
-            }
-        }
+        self.supported_encoders = [
+            {"name": "x264", "type": "sw", "format": "avc", "hrd": False},
+            {"name": "x264_10bit", "type": "sw", "format": "avc", "hrd": False},
+            {"name": "x265", "type": "sw", "format": "hevc", "hrd": False},
+            {"name": "x265_10bit", "type": "sw", "format": "hevc", "hrd": False},
+            {"name": "qsv_h264", "type": "hw", "format": "avc"},
+            {"name": "qsv_h265", "type": "hw", "format": "hevc"},
+            {"name": "qsv_h265_10bit", "type": "hw", "format": "hevc"},
+            {"name": "nvenc_h264", "type": "hw", "format": "avc"},
+            {"name": "nvenc_h265", "type": "hw", "format": "hevc"},
+            {"name": "vt_h264", "type": "hw", "format": "avc"},
+            {"name": "vt_h265", "type": "hw", "format": "hevc"},
+            {"name": "vt_h265_10bit", "type": "hw", "format": "hevc"},
+            {"name": "vce_h264", "type": "hw", "format": "avc", "hrd": False},
+            {"name": "vce_h265", "type": "hw", "format": "hevc", "hrd": False},
+        ]
 
         self.available_video_encoders = []
         self.available_audio_encoders = []
@@ -299,33 +255,33 @@ class Transcoder:
         
         self.two_pass = args.two_pass
 
-        if args.ten_bit:
-            for key in self.supported_encoders:
-                self.supported_encoders[key]["name"] += "_10bit"
-
         format = "avc" if not args.hevc else "hevc"
         type = "sw" if not args.hw_accel else "hw"
-        for key in self.supported_encoders:
-            encoder = self.supported_encoders[key]
-            if (encoder["name"] in self.available_video_encoders
-                    and encoder["format"] == format
-                    and encoder["type"] == type):
-               self.encoder = encoder
+        suffix = "" if not args.ten_bit else "_10bit"
+        def encoder_check(encoder):
+            if suffix not in encoder["name"]:
+                return False
+            elif encoder["name"] not in self.available_video_encoders:
+                return False
+            elif encoder["format"] != format:
+                return False
+            elif encoder["type"] != type:
+                return False
+            elif args.hrd and "hrd" not in encoder:
+                return False
+            else:
+                return True
+            
+        for encoder in self.supported_encoders:
+            print(encoder)
+            if encoder_check(encoder):
+                self.encoder = encoder
+                if args.hrd:
+                    self.encoder["hrd"] = True
+                break
 
         if not self.encoder:
             exit("No suitable video encoder found for requested settings")
-
-        if args.hrd:
-            if "x264" in self.encoder["name"]:
-                self.encoder["encopts"] = "nal-hrd=vbr"
-                self.encoder["maxrate"] = 1.5
-                self.encoder["bufsize"] = 2
-            elif "x265" in self.encoder["name"]:
-                self.encoder["encopts"] += ":hrd=1"
-            elif "vce" in self.encoder["name"]:
-                self.encoder["encopts"] = "enforce_hrd=1"
-            else:
-                exit("No suitable encoder found for requested settings")
 
         if args.crop:
             if re.match("[0-9]+:[0-9]+:[0-9]+:[0-9]+", args.crop):
@@ -458,20 +414,22 @@ class Transcoder:
         args += ["--encoder", self.encoder["name"], "--vb", str(target_bitrate)]
 
         encopts = ""
-        if "encopts" in self.encoder:
-            encopts += self.encoder["encopts"]
-
-        if "maxrate" in self.encoder:
-            if encopts:
-                encopts += ":"
-
-            encopts += f"vbv-maxrate={int(self.encoder['maxrate'] * target_bitrate)}"
-
-        if "bufsize" in self.encoder:
-            if encopts:
-                encopts += ":"
-
-            encopts += f"vbv-bufsize={int(self.encoder['bufsize'] * target_bitrate)}"
+        if "x264" in self.encoder["name"]:
+            if self.encoder["hrd"]:
+                encopts = f"nal-hrd=vbr:vbv-maxrate={int(target_bitrate*1.5)}:vbv-bufsize={int(target_bitrate*2)}"
+            else:
+                encopts = f"ratetol=inf:mbtree=0:vbv-maxrate={int(target_bitrate*3)}:vbv-bufsize={int(target_bitrate*3.75)}"
+        elif "x265" in self.encoder["name"]:
+            encopts = f"ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2:vbv-maxrate={int(target_bitrate*1.5)}:vbv-bufsize={int(target_bitrate*2)}"
+            if self.encoder["hrd"]:
+                encopts += ":hrd=1"
+        elif "nvenc" in self.encoder["name"]:
+            encopts = "spatial-aq=1"
+            if self.encoder["format"] == "hevc":
+                encopts += ":temporal-aq=1"
+        elif "vce" in self.encoder["name"]:
+            if self.encoder["hrd"]:
+                encopts = "enforce_hrd=1"
 
         if encopts:
             args += ["--encopts", encopts]
