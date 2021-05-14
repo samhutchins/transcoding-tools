@@ -48,7 +48,7 @@ Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
     --two-pass      Two-pass encoding
-    --hrd           Encode an HRD compliant stream
+    --hrd           Encode an HRD compliant stream, if the encoder supports it
 
 Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
