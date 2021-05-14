@@ -48,7 +48,7 @@ Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
     --two-pass      Two-pass encoding
-    --hrd           Encode an HRD compliant stream, if the encoder supports it
+    --hrd           Encode an HRD compliant stream
 
 Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
@@ -284,16 +284,6 @@ class Transcoder:
         
         self.two_pass = args.two_pass
 
-        if args.hrd:
-            self.supported_encoders["x264"]["encopts"] = "nal-hrd=vbr"
-            self.supported_encoders["x264"]["maxrate"] = 1.5
-            self.supported_encoders["x264"]["bufsize"] = 2
-
-            self.supported_encoders["x265"]["encopts"] += ":hrd=1"
-
-            self.supported_encoders["vce_h264"]["encopts"] = "enforce_hrd=1"
-            self.supported_encoders["vce_h265"]["encopts"] = "enforce_hrd=1"
-
         if args.ten_bit:
             for key in self.supported_encoders:
                 self.supported_encoders[key]["name"] += "_10bit"
@@ -309,6 +299,18 @@ class Transcoder:
 
         if not self.encoder:
             exit("No suitable video encoder found for requested settings")
+
+        if args.hrd:
+            if "x264" in self.encoder["name"]:
+                self.encoder["encopts"] = "nal-hrd=vbr"
+                self.encoder["maxrate"] = 1.5
+                self.encoder["bufsize"] = 2
+            elif "x265" in self.encoder["name"]:
+                self.encoder["encopts"] += ":hrd=1"
+            elif "vce" in self.encoder["name"]:
+                self.encoder["encopts"] = "enforce_hrd=1"
+            else:
+                exit("No suitable encoder found for requested settings")
 
         if args.crop:
             if re.match("[0-9]+:[0-9]+:[0-9]+:[0-9]+", args.crop):
