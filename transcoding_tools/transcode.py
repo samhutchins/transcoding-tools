@@ -591,7 +591,6 @@ class Transcoder:
             except TimeoutExpired as e:
                 log_file.write(f"Encoding failed: {e}\n".encode("utf-8"))
                 exit(f"Encoding failed: {e}")
-                return False
             
         return True
 
