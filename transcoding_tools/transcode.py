@@ -110,9 +110,10 @@ class Transcoder:
 
         self.video_bitrate_index = 2
         self.video_bitrate_ladder = {
+            "4k":    [8000, 12000, 16000, 24000],
             "1080p": [4000, 6000, 8000, 12000],
-            "720p": [2000, 3000, 4000, 6000],
-            "sd": [1000, 1500, 2000, 3000]
+            "720p":  [2000, 3000, 4000, 6000],
+            "sd":    [1000, 1500, 2000, 3000]
         }
 
         self.encoder = None
@@ -399,16 +400,18 @@ class Transcoder:
 
         args += interlacing_args
 
+        if media_info["video"]["width"] > 1920 or media_info["video"]["height"] > 1080:
+            video_size = "4k"
+        elif media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
+            video_size = "1080p"
+        elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
+            video_size = "720p"
+        else:
+            video_size = "sd"
+
         hfr = framerate > 30
         bitrate_multiplier = 1 if not hfr else 1.2
-        if media_info["video"]["width"] > 1280 or media_info["video"]["height"] > 720:
-            target_bitrate = self.video_bitrate_ladder["1080p"][self.video_bitrate_index] * bitrate_multiplier
-        elif media_info["video"]["width"] * media_info["video"]["height"] > 720 * 576:
-            target_bitrate = self.video_bitrate_ladder["720p"][self.video_bitrate_index] * bitrate_multiplier
-        else:
-            target_bitrate = self.video_bitrate_ladder["sd"][self.video_bitrate_index] * bitrate_multiplier
-
-        target_bitrate = int(target_bitrate)
+        target_bitrate = int(self.video_bitrate_ladder[video_size][self.video_bitrate_index] * bitrate_multiplier)
 
         args += ["--encoder", self.encoder["name"], "--vb", str(target_bitrate)]
 
