@@ -32,11 +32,11 @@ will be cropped automatically to remove black bars. Track selection, cropping,
 deinterlacing, and burning can be controlled by the options documented below.
 
 Input options:
-    --dry-run       print the HandBrakeCLI command and exit
+    --dry-run       Print the HandBrakeCLI command and exit
     --start HH:MM:SS
                     The time in the input file to start at
     --stop HH:MM:SS
-                    The time int he input file to stop at
+                    The time in the input file to stop at
 
 Output options:
     --hevc          Output h.265 (hevc) instead of h.264. This will also reduce
@@ -79,9 +79,9 @@ Subtitle options:
 
 Other options:
     --skip-remux    Don't remux the output after transcoding
--d, --debug         print debug information
--h, --help          print this message and exit
-    --version       print version information and exit
+-d, --debug         Print debug information
+-h, --help          Print this message and exit
+    --version       Print version information and exit
 
 Requires `HandBrakeCLI`, `ffprobe`, `ffmpeg`, `mkvpropedit`, and `mkvmerge`\
 """
