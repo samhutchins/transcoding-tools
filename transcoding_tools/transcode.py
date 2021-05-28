@@ -426,9 +426,10 @@ class Transcoder:
             if self.encoder["hrd"]:
                 encopts += ":hrd=1"
         elif "nvenc" in self.encoder["name"]:
-            encopts = "spatial-aq=1"
-            if self.encoder["format"] == "hevc":
-                encopts += ":temporal-aq=1"
+            if self.encoder["format"] == "avc":
+                encopts = "spatial-aq=1"
+            elif self.encoder["format"] == "hevc":
+                encopts = "spatial_aq=1:temporal_aq=1"
         elif "vce" in self.encoder["name"]:
             if self.encoder["hrd"]:
                 encopts = "enforce_hrd=1"
