@@ -50,7 +50,6 @@ Encoder options:
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
     --two-pass      Two-pass encoding
-    --hrd           Encode an HRD compliant stream
 
 Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
@@ -118,10 +117,10 @@ class Transcoder:
 
         self.encoder = None
         self.supported_encoders = [
-            {"name": "x264", "type": "sw", "format": "avc", "hrd": False},
-            {"name": "x264_10bit", "type": "sw", "format": "avc", "hrd": False},
-            {"name": "x265", "type": "sw", "format": "hevc", "hrd": False},
-            {"name": "x265_10bit", "type": "sw", "format": "hevc", "hrd": False},
+            {"name": "x264", "type": "sw", "format": "avc"},
+            {"name": "x264_10bit", "type": "sw", "format": "avc"},
+            {"name": "x265", "type": "sw", "format": "hevc"},
+            {"name": "x265_10bit", "type": "sw", "format": "hevc"},
             {"name": "qsv_h264", "type": "hw", "format": "avc"},
             {"name": "qsv_h265", "type": "hw", "format": "hevc"},
             {"name": "qsv_h265_10bit", "type": "hw", "format": "hevc"},
@@ -130,8 +129,8 @@ class Transcoder:
             {"name": "vt_h264", "type": "hw", "format": "avc"},
             {"name": "vt_h265", "type": "hw", "format": "hevc"},
             {"name": "vt_h265_10bit", "type": "hw", "format": "hevc"},
-            {"name": "vce_h264", "type": "hw", "format": "avc", "hrd": False},
-            {"name": "vce_h265", "type": "hw", "format": "hevc", "hrd": False},
+            {"name": "vce_h264", "type": "hw", "format": "avc"},
+            {"name": "vce_h265", "type": "hw", "format": "hevc"},
         ]
 
         self.available_video_encoders = []
@@ -152,7 +151,6 @@ class Transcoder:
         parser.add_argument("--target-bitrate", metavar="big|small")
         parser.add_argument("--hw-accel", action="store_true")
         parser.add_argument("--two-pass", action="store_true")
-        parser.add_argument("--hrd", action="store_true")
 
         parser.add_argument("--crop", metavar="TOP:BOTTOM:LEFT:RIGHT")
         parser.add_argument("--no-crop", action="store_true")
@@ -268,16 +266,12 @@ class Transcoder:
                 return False
             elif encoder["type"] != type:
                 return False
-            elif args.hrd and "hrd" not in encoder:
-                return False
             else:
                 return True
             
         for encoder in self.supported_encoders:
             if encoder_check(encoder):
                 self.encoder = encoder
-                if args.hrd:
-                    self.encoder["hrd"] = True
                 break
 
         if not self.encoder:
@@ -417,22 +411,14 @@ class Transcoder:
 
         encopts = ""
         if "x264" in self.encoder["name"]:
-            if self.encoder["hrd"]:
-                encopts = f"nal-hrd=vbr:vbv-maxrate={int(target_bitrate*1.5)}:vbv-bufsize={int(target_bitrate*2)}"
-            else:
-                encopts = f"ratetol=inf:mbtree=0:vbv-maxrate={int(target_bitrate*3)}:vbv-bufsize={int(target_bitrate*3.75)}"
+            encopts = f"vbv-maxrate={int(target_bitrate*1.5)}:vbv-bufsize={int(target_bitrate*2)}"
         elif "x265" in self.encoder["name"]:
             encopts = f"ctu=32:merange=25:weightb=1:aq-mode=1:cutree=0:deblock=-1,-1:selective-sao=2:vbv-maxrate={int(target_bitrate*1.5)}:vbv-bufsize={int(target_bitrate*2)}"
-            if self.encoder["hrd"]:
-                encopts += ":hrd=1"
         elif "nvenc" in self.encoder["name"]:
             if self.encoder["format"] == "avc":
                 encopts = "spatial-aq=1"
             elif self.encoder["format"] == "hevc":
                 encopts = "spatial_aq=1:temporal_aq=1"
-        elif "vce" in self.encoder["name"]:
-            if self.encoder["hrd"]:
-                encopts = "enforce_hrd=1"
 
         if encopts:
             args += ["--encopts", encopts]
