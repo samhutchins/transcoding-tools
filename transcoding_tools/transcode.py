@@ -49,7 +49,7 @@ Encoder options:
                       bitrates, and `small` for lower ones.
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
-    --two-pass      Two-pass encoding
+    --two-pass      Two-pass encoding (incompatible with `--hw-accel`)
 
 Picture options:
     --crop TOP:BOTTOM:LEFT:RIGHT
