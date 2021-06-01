@@ -477,12 +477,10 @@ class Transcoder:
 
     def get_audio_args(self, media_info):
         if self.stereo_format == "aac" or self.surround_format == "aac":
-            if "ca_aac" in self.available_audio_encoders:
-                aac_encoder = "ca_aac"
-            elif "fdk_aac" in self.available_audio_encoders:
-                aac_encoder = "fdk_aac"
-            elif "av_aac" in self.available_audio_encoders:
-                aac_encoder = "av_aac"
+            for encoder in ["ca_aac", "fdk_aac", "av_aac"]:
+                if encoder in self.available_audio_encoders:
+                    aac_encoder = encoder
+                    break
             else:
                 exit("No AAC audio encoder found")
 
