@@ -610,7 +610,6 @@ class Transcoder:
                     mixdowns.append("")
                     bitrates.append(str(bitrate))
 
-        print(encoders)
         args += ["--aencoder", ",".join(encoders)]
         for mixdown in mixdowns:
             if mixdown:
