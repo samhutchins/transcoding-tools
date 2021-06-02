@@ -72,13 +72,14 @@ Audio options:
     --stereo-format ac3|eac3|aac
                     Which format should be used for stereo audio.
                       (default: aac)
-    --passthrough-formats FORMAT[,FORMAT]...
-                    Which formats can be passed through unchanged, assuming the
+    --surround-passthrough FORMAT[=BITRATE]...
+                    Which surround formats can be passed through unchanged,
+                      assuming the bitrate is within tolerance.
+                      Options: ac3, eac3, aac. (default: ac3=640)
+    --stereo-passthrough FORMAT[=BITRATE]...
+                    Which stereo formats can be passed through unchanged, assuming the
                       bitrate is within tolerance. Options: ac3, eac3, aac.
-                      (default: ac3,aac)
-    --no-passthrough
-                    Disable passthrough of audio, and force all audio to be
-                      transcoded
+                      (default: ac3=256 aac=256)
 
 Subtitle options:
     --burn TRACK    Which subtitle track to burn into the video
@@ -113,7 +114,8 @@ class Transcoder:
 
         self.surround_format = "ac3"
         self.stereo_format = "aac"
-        self.passthrough_formats = ["ac3", "aac"]
+        self.surround_passthrough_rules = [("ac3", 640)]
+        self.stereo_passthrough_rules = [("aac", 256), ("ac3", 256)]
         self.audio = [("1", ["surround"])]
 
         self.burned_sub = "auto"
@@ -177,7 +179,8 @@ class Transcoder:
         parser.add_argument("--audio", metavar="TRACK[ TRACK...]|LANGUAGE[ LANGUAGE...]|all", nargs="+")
         parser.add_argument("--surround-format", metavar="ac3|eac3|aac")
         parser.add_argument("--stereo-format", metavar="ac3|eac3|aac")
-        parser.add_argument("--passthrough-formats", metavar="FORMAT[ FORMAT...]", nargs="+")
+        parser.add_argument("--surround-passthrough", metavar="FORMAT[=BITRATE]", nargs="+")
+        parser.add_argument("--stereo-passthrough", metavar="FORMAT[=BITRATE]", nargs="+")
         parser.add_argument("--no-passthrough", action="store_true")
         parser.add_argument("--stereo", action="store_true")
 
@@ -319,32 +322,6 @@ class Transcoder:
             else:
                 exit(f"Invalid aspect ratio: {args.par}")
 
-        if args.surround_format:
-            if args.surround_format in ["ac3", "eac3", "aac"]:
-                self.surround_format = args.surround_format
-            else:
-                exit(f"Unsupported format for surround audio: {args.surround_format}")
-
-        if args.stereo_format:
-            if args.stereo_format in ["ac3", "eac3", "aac"]:
-                self.stereo_format = args.stereo_format
-            else:
-                exit(f"Unsupported format for stereo audio: {args.stereo_format}")
-
-        if args.passthrough_formats and args.no_passthrough:
-            exit("`--passthrough-formats` and `--no-passthrough` are mutually exclusive")
-
-        if args.passthrough_formats:
-            self.passthrough_formats = []
-            for format in args.passthrough_formats:
-                if format in ["ac3", "eac3", "aac"]:
-                    self.passthrough_formats.append(format)
-                else:
-                    exit(f"Invalid passthrough format: {format}")
-
-        if args.no_passthrough:
-            self.passthrough_formats = []
-        
         def parse_audio_arg(arg):
             pattern = re.compile("^([0-9]+|[a-z]{3})(?:=(surround|stereo))?$")
             results = pattern.findall(arg)
@@ -364,6 +341,37 @@ class Transcoder:
                         break
                 else:
                     self.audio.append(parsed_arg)
+
+        if args.surround_format:
+            if args.surround_format in ["ac3", "eac3", "aac"]:
+                self.surround_format = args.surround_format
+            else:
+                exit(f"Unsupported format for surround audio: {args.surround_format}")
+
+        if args.stereo_format:
+            if args.stereo_format in ["ac3", "eac3", "aac"]:
+                self.stereo_format = args.stereo_format
+            else:
+                exit(f"Unsupported format for stereo audio: {args.stereo_format}")
+
+        def parse_passthrough(arg, default_bitrate):
+            pattern = re.compile("^(ac3|eac3|aac)(?:=([0-9]+))?$")
+            results = pattern.findall(arg)
+            if results:
+                groups = results[0]
+                return (groups[0], int(groups[1]) if groups[1] else default_bitrate)
+            else:
+                exit(f"Invalid passthrough rule: {arg}")
+        
+        if args.surround_passthrough:
+            self.surround_passthrough_rules = []
+            for arg in args.surround_passthrough:
+                self.surround_passthrough_rules.append(parse_passthrough(arg, 640))
+
+        if args.stereo_passthrough:
+            self.stereo_passthrough_rules = []
+            for arg in args.stereo_passthrough:
+                self.stereo_passthrough_rules.append(parse_passthrough(arg, 256))
 
         if args.burn:
             self.burned_sub = args.burn
@@ -495,7 +503,6 @@ class Transcoder:
 
         stereo_encoder = aac_encoder if self.stereo_format == "aac" else self.stereo_format
         surround_encoder = aac_encoder if self.surround_format == "aac" else self.surround_format
-        audio_bitrates = {"surround": 640, "stereo": 192, "mono": 96}
 
         selected_tracks = []
         for track in self.audio:
@@ -530,8 +537,33 @@ class Transcoder:
             source_bitrate = int(source_bitrate) / 1000 if source_bitrate != "unknown" else sys.maxsize
             target_layout = track[1]
 
+            stereo_bitrate = 192
+            surround_bitrate = 640
+
+            def stereo_passthrough_check():
+                if source_channels <= 2:
+                    return False
+                elif source_codec == self.stereo_format and source_bitrate <= stereo_bitrate:
+                    return True
+                else:
+                    for rule_format, rule_bitrate in self.stereo_passthrough_rules:
+                        if rule_format == source_codec and rule_bitrate >= source_bitrate:
+                            return True
+                    else:
+                        return False
+
+            def surround_passthrough_check(target_bitrate, target_format):
+                if source_codec == target_format and source_bitrate <= target_bitrate:
+                    return True
+                else:
+                    for rule_format, rule_bitrate in self.surround_passthrough_rules:
+                        if rule_format == source_codec and rule_bitrate >= source_bitrate:
+                            return True
+                    else:
+                        return False
+
             if target_layout == "stereo":
-                if source_channels <= 2 and source_codec in self.passthrough_formats and source_bitrate <= audio_bitrates["stereo"] * 1.5:
+                if stereo_passthrough_check():
                     encoders.append("copy")
                     mixdowns.append("")
                     bitrates.append("")
@@ -542,29 +574,27 @@ class Transcoder:
                         mixdowns.append("")
                     
                     encoders.append(stereo_encoder)
-                    bitrates.append(str(audio_bitrates["stereo"] if source_channels >= 2 else audio_bitrates["mono"]))
+                    bitrates.append(str(stereo_bitrate if source_channels >= 2 else stereo_bitrate / 2))
             else:
                 if source_channels > 2:
-                    key = "surround"
-                    multiplier = 1
-                elif source_channels == 2:
-                    key = "stereo"
-                    multiplier = 1.5
+                    bitrate = surround_bitrate
+                    encoder = format = surround_encoder
                 else:
-                    key = "mono"
-                    multiplier = 1.5
+                    encoder = stereo_encoder
+                    format = self.stereo_format
+                    if source_codec == 2:
+                        bitrate = stereo_bitrate
+                    else:
+                        bitrate = stereo_bitrate / 2
 
-                if source_codec in self.passthrough_formats and source_bitrate <= audio_bitrates[key] * multiplier:
+                if surround_passthrough_check(bitrate, format):
                     encoders.append("copy")
                     mixdowns.append("")
                     bitrates.append("")
                 else:
-                    if source_channels > 2:
-                        encoders.append(surround_encoder)
-                    else:
-                        encoders.append(stereo_encoder)
+                    encoders.append(encoder)
                     mixdowns.append("")
-                    bitrates.append(str(audio_bitrates[key]))
+                    bitrates.append(str(bitrate))
 
         args += ["--aencoder", ",".join(encoders)]
         for mixdown in mixdowns:
