@@ -63,8 +63,9 @@ Picture options:
     --par X:Y       Override the pixel aspect ratio (default: same as input)
 
 Audio options:
-    --audio TRACK[ TRACK...]|LANGUAGE[ LANGUAGE...]|all
-                    Which audio tracks to include in the output. (default: 1)
+    --audio TRACK|LANGUAGE|all[=surround|stereo]...
+                    Which audio tracks to include in the output.
+                      (default: 1=surround)
     --surround-format ac3|eac3|aac
                     Which format should be used for surround audio.
                       (default: ac3)
@@ -78,7 +79,6 @@ Audio options:
     --no-passthrough
                     Disable passthrough of audio, and force all audio to be
                       transcoded
-    --stereo        Restrict the output to stereo
 
 Subtitle options:
     --burn TRACK    Which subtitle track to burn into the video
@@ -114,8 +114,7 @@ class Transcoder:
         self.surround_format = "ac3"
         self.stereo_format = "aac"
         self.passthrough_formats = ["ac3", "aac"]
-        self.stereo = False
-        self.audio = ["1"]
+        self.audio = [("1", ["surround"])]
 
         self.burned_sub = "auto"
         self.subtitles = "auto"
@@ -345,16 +344,26 @@ class Transcoder:
 
         if args.no_passthrough:
             self.passthrough_formats = []
-
-        self.stereo = args.stereo
         
-        if args.audio:
+        def parse_audio_arg(arg):
+            pattern = re.compile("^([0-9]+|[a-z]{3})(?:=(surround|stereo))?$")
+            results = pattern.findall(arg)
+            if results:
+                groups = results[0]
+                return (groups[0], [groups[1] if groups[1] else "surround"])
+            else:
+                exit(f"Invalid audio track selector: {arg}")
+
+        if args.audio is not None:
             self.audio = []
-            for track in args.audio:
-                if re.match("[0-9]+|[a-z]{3}", track):
-                    self.audio.append(track)
+            for arg in args.audio:
+                parsed_arg = parse_audio_arg(arg)
+                for audio in self.audio:
+                    if (audio[0] == parsed_arg[0]):
+                        audio[1].extend(parsed_arg[1])
+                        break
                 else:
-                    exit(f"Invalid audio track selector: {track}")
+                    self.audio.append(parsed_arg)
 
         if args.burn:
             self.burned_sub = args.burn
@@ -490,31 +499,38 @@ class Transcoder:
 
         selected_tracks = []
         for track in self.audio:
-            if re.match("[0-9]+", track):
-                selected_tracks.append(int(track))
-            elif track == "all":
-                selected_tracks = [t["index"] for t in media_info["audio"]]
+            if re.match("[0-9]+", track[0]):
+                for format in track[1]:
+                    selected_tracks.append((int(track[0]), format))
+            elif track[0] == "all":
+                for t in media_info["audio"]:
+                    for format in track[1]:
+                        selected_tracks.append((t["index"], format))
                 break
             else:
-                selected_tracks += [t["index"] for t in media_info["audio"] if t["language"] == track]
+                for t in media_info["audio"]:
+                    if t["language"] == track[0]:
+                        for format in track[1]:
+                            selected_tracks.append((t["index"], format))
 
         selected_tracks = reduce(lambda x,y: x+[y] if not y in x else x, selected_tracks, [])
 
-        args = ["--audio", ",".join(map(lambda x: str(x), selected_tracks))]
+        args = ["--audio", ",".join(map(lambda x: str(x[0]), selected_tracks))]
 
         encoders = []
         mixdowns = []
         bitrates = []
 
         for track in selected_tracks:
-            if track > len(media_info["audio"]):
+            if track[0] > len(media_info["audio"]):
                 exit(f"Invalid track index: {track}")
-            source_channels = media_info["audio"][track-1]["channels"]
-            source_codec = media_info["audio"][track-1]["codec_name"]
-            source_bitrate = media_info["audio"][track-1]["bit_rate"]
+            source_channels = media_info["audio"][track[0]-1]["channels"]
+            source_codec = media_info["audio"][track[0]-1]["codec_name"]
+            source_bitrate = media_info["audio"][track[0]-1]["bit_rate"]
             source_bitrate = int(source_bitrate) / 1000 if source_bitrate != "unknown" else sys.maxsize
+            target_layout = track[1]
 
-            if self.stereo:
+            if target_layout == "stereo":
                 if source_channels <= 2 and source_codec in self.passthrough_formats and source_bitrate <= audio_bitrates["stereo"] * 1.5:
                     encoders.append("copy")
                     mixdowns.append("")
@@ -561,7 +577,7 @@ class Transcoder:
                 args += ["--ab", ",".join(bitrates)]
                 break
 
-        return args, media_info["audio"][selected_tracks[0]-1]["language"]
+        return args, media_info["audio"][selected_tracks[0][0]-1]["language"]
 
 
     def get_subtitle_args(self, media_info, audio_language):
