@@ -163,6 +163,7 @@ class Transcoder:
 
         self.available_video_encoders = []
         self.available_audio_encoders = []
+        self.qsv_decode_supported = False
 
 
     def run(self):
@@ -507,6 +508,9 @@ class Transcoder:
         if encopts:
             args += ["--encopts", encopts]
 
+        if self.qsv_decode_supported and "qsv" in self.encoder["name"]:
+            args += ["--enable-qsv-decoding"]
+
         if self.two_pass:
             args += ["--two-pass", "--turbo"]
         
@@ -694,11 +698,16 @@ class Transcoder:
     def verify_tools(self):
         utils.verify_tools([
             ["ffprobe", "-version"],
-            ["HandBrakeCLI", "--version"],
             ["mkvpropedit", "--version"],
             ["ffmpeg", "-version"],
             ["mkvmerge", "--version"]
         ])
+
+        handbrake_version_string = run(["HandBrakeCLI", "--version"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
+        handbrake_version = HandBrakeVersion(handbrake_version_string)
+
+        qsv_decode_supported_after = HandBrakeVersion("HandBrake 1.4.0") if not handbrake_version.is_pre_release else HandBrakeVersion("HandBrake 20210812183853-e257a32a4-master")
+        self.qsv_decode_supported = handbrake_version.is_newer_than(qsv_decode_supported_after)
 
         handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
 
@@ -725,6 +734,7 @@ class Transcoder:
 
         self.available_video_encoders = video_encoders
         self.available_audio_encoders = audio_encoders
+        self.qsv_decode_supported &= ("qsv_h264" in video_encoders or "qsv_h265" in video_encoders)
 
 
     def scan_media(self, file):
@@ -757,6 +767,43 @@ class Transcoder:
         }
 
         return media_info
+
+
+class HandBrakeVersion:
+    def __init__(self, version_string):
+        name = "HandBrake"
+        version = version_string[len(name):].strip()
+
+        release_build_pattern = re.compile("(\d+)\.(\d+)\.(\d+)")
+        nightly_build_pattern = re.compile("(\d{14}).*")
+
+        if match := release_build_pattern.match(version):
+            self.is_pre_release = False
+            self.major_version = match.group(1)
+            self.minor_version = match.group(2)
+            self.patch_version = match.group(3)
+        elif match := nightly_build_pattern.match(version):
+            self.is_pre_release = True
+            date_string = match.group(1)[8:]
+            self.date = int(date_string)
+        else:
+            exit(f"Unknown HandBrake version: {version_string}")
+
+
+    def is_newer_than(self, other):
+        if self.is_pre_release and other.is_pre_release:
+            return self.date > other.date
+        elif not self.is_pre_release and not other.is_pre_release:
+            if self.major_version > other.major_version:
+                return True
+            elif self.major_version == other.major_version and self.minor_version > other.minor_version:
+                return True
+            elif self.major_version == other.major_version and self.minor_version == other.minor_version and self.patch_version > other.patch_version:
+                return True
+            else:
+                return False
+        else:
+            exit("Unable to compare between release builds and pre-release builds")
 
 
 def main():
