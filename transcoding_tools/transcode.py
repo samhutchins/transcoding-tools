@@ -44,9 +44,10 @@ Output options:
     --10-bit        Output 10 bit video
 
 Encoder options:
-    --target-bitrate big|small
+    --target-bitrate big|small|BITRATE
                     Tweak the target bitrates. Use `big` for higher than default
-                      bitrates, and `small` for lower ones.
+                      bitrates, and `small` for lower ones. You can also just
+                      specify a number
     --hw-accel      Use a hardware encoder. These are much faster, but generally
                       lower quality
     --two-pass      Two-pass encoding (incompatible with `--hw-accel`)
@@ -133,6 +134,7 @@ class Transcoder:
         self.skip_remux = False
         self.debug = False
 
+        self.video_bitrate = None
         self.video_bitrate_index = 2
         self.video_bitrate_ladder = {
             "4k":    [8000, 12000, 16000, 24000],
@@ -276,6 +278,8 @@ class Transcoder:
                 self.video_bitrate_index += 1
             elif args.target_bitrate == "small":
                 self.video_bitrate_index -= 1
+            elif re.match("[0-9]+", args.target_bitrate):
+                self.video_bitrate = int(args.target_bitrate)
             else:
                 exit(f"Invalid bitrate target: {args.bitrate_target}")
             
@@ -485,7 +489,7 @@ class Transcoder:
 
         hfr = framerate > 30
         bitrate_multiplier = 1 if not hfr else 1.2
-        target_bitrate = int(self.video_bitrate_ladder[video_size][self.video_bitrate_index] * bitrate_multiplier)
+        target_bitrate = self.video_bitrate if self.video_bitrate else int(self.video_bitrate_ladder[video_size][self.video_bitrate_index] * bitrate_multiplier)
 
         args += ["--encoder", self.encoder["name"], "--vb", str(target_bitrate)]
 
