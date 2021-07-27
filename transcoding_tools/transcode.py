@@ -600,7 +600,7 @@ class Transcoder:
                 else:
                     encoder = stereo_encoder
                     format = self.stereo_format
-                    if source_codec == 2:
+                    if source_channels == 2:
                         bitrate = self.stereo_bitrate
                     else:
                         bitrate = self.stereo_bitrate / 2
