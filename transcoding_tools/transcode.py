@@ -559,7 +559,7 @@ class Transcoder:
             target_layout = track[1]
 
             def stereo_passthrough_check():
-                if source_channels <= 2:
+                if source_channels > 2:
                     return False
                 elif source_codec == self.stereo_format and source_bitrate <= self.stereo_bitrate:
                     return True
