@@ -740,7 +740,7 @@ class Transcoder:
 
         filename = ffprobe_result["format"]["filename"]
         video = [{"width": s["width"], "height": s["height"], "stored_interlaced": s.get("field_order", "progressive") != "progressive", "detected_crop": detected_crop, "fps": float(Fraction(s["avg_frame_rate"]))} for s in ffprobe_result["streams"] if s["codec_type"] == "video"][0]
-        audio = [{"channels": s["channels"], "codec_name": s["codec_name"], "bit_rate": s.get("bit_rate", "unknown"), "index": s["index"], "language": s.get("tags", {}).get("language", "und")} for s in ffprobe_result["streams"] if s["codec_type"] == "audio"]
+        audio = [{"channels": s["channels"], "codec_name": s["codec_name"], "bit_rate": s.get("bit_rate", s.get("tags", {}).get("BPS-eng", "unknown")), "index": s["index"], "language": s.get("tags", {}).get("language", "und")} for s in ffprobe_result["streams"] if s["codec_type"] == "audio"]
         audio.sort(key=lambda a: a["index"])
         for i, a in enumerate(audio):
             a["index"] = i+1
