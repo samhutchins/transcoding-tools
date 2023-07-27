@@ -12,7 +12,7 @@ There are currently 3 tools: `inspect`, `remux`, and `transcode`. Each command h
 
 `transcode` is where the good stuff is, and has the most options. It leverages `HandBrakeCLI` to transcode, and it has a lot of automatic behaviors. By default, the video stream will be h.264 at 8000kb/s. Cropping is applied automatically, as is basic deinterlacing. The first audio track is transcoded to up to 5.1 AC3 at 640kb/s, although stereo audio is encoded to AAC. Forced subtitles are burned in, and any other subtitles that match the language of the main audio track will be included. The tool provides _some_ configuration for track selection, codecs, and bitrates; but it's generally more of an "opinionated" tool (read: optimised for my workflow)
 
-I strongly recommend taking a look at Don Melton's [other_video_transcoding](https://github.com/donmelton/other_video_transcoding) project, as it's more flexible and better tested.
+I strongly recommend taking a look at Lisa Melton's [other_video_transcoding](https://github.com/lisamelton/other_video_transcoding) project, as it's more flexible and better tested.
 
 ## Requirements
 
@@ -25,4 +25,4 @@ I strongly recommend taking a look at Don Melton's [other_video_transcoding](htt
 
 ## Credits
 
-I've written these tools with lots of inspiration from Don Melton's excellent [video_transcoding](https://github.com/donmelton/video_transcoding) and [other_video_transcoding](https://github.com/donmelton/other_video_transcoding) projects. The crop detection is from `other-transcode`, and a lot of inspiration on how to drive `HandBrakeCLI` was take from transcode-video
+I've written these tools with lots of inspiration from Lisa Melton's excellent [video_transcoding](https://github.com/lisamelton/video_transcoding) and [other_video_transcoding](https://github.com/lisamelton/other_video_transcoding) projects. The crop detection is from `other-transcode`, and a lot of inspiration on how to drive `HandBrakeCLI` was take from transcode-video

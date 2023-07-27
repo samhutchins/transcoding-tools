@@ -50,8 +50,8 @@ def is_interlaced_encoding(media_info):
     return video_stream.get("field_order", "progressive") != "progressive"
 
 
-# This algorithm is shamelessly taken from Don Melton's `other_video_transcoding` project: 
-# https://github.com/donmelton/other_video_transcoding
+# This algorithm is shamelessly taken from Lisa Melton's `other_video_transcoding` project: 
+# https://github.com/lisamelton/other_video_transcoding
 def detect_crop(media_info):
     print("Detecting crop...", file=sys.stderr)
     duration = float(media_info["format"]["duration"])
