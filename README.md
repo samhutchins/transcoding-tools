@@ -1,28 +1,30 @@
-# Transcoding Tools
+# Simple transcoding tools
 
-Tools to inspect, remux, and transcode Blu Ray or DVD rips
+Intentionally simple transcoding scripts
 
 ## Usage
 
-There are currently 3 tools: `inspect`, `remux`, and `transcode`. Each command has a `--help` option that contains useful information, and a full break-down of all the options.
+1. Inspect your source material with `inspect.py`. It will print stream information that should help you decide which streams you want to keep
 
-`inspect` is useful for understanding the source media, it will print stream information, including codec, channel layout, element counts, language, and disposition; and also scan for crop boundaries and interlacing artefacts. You can use this information to inform your decisions about how to transcode.
+1. Remux your source to normalise it using `remux.py`. Use `-a` to select audio tracks, `-s` to select subtitle tracks, and `-f` for force a subtitle track, if desired. 
 
-`remux` will let you normalise rips, adjusting disposition and track selection in the process.
+1. Check cropping with `preview-crop.py`. It will open `mpv` with the `drawbox` filter to show what the detected crop is, and it will put a `crop.txt` file with the detected crop in the current working directory.
 
-`transcode` is where the good stuff is, and has the most options. It leverages `HandBrakeCLI` to transcode, and it has a lot of automatic behaviors. By default, the video stream will be h.264 at 8000kb/s. Cropping is applied automatically, as is basic deinterlacing. The first audio track is transcoded to up to 5.1 AC3 at 640kb/s, although stereo audio is encoded to AAC. Forced subtitles are burned in, and any other subtitles that match the language of the main audio track will be included. The tool provides _some_ configuration for track selection, codecs, and bitrates; but it's generally more of an "opinionated" tool (read: optimised for my workflow)
+1. Transcode with `hevc-encode.py`. If `crop.txt` is found next to the source, it will automatically be used for crop information. You'll get an output with whatever transcoding settings I'm currently using. Use `--dry-run` to see the HandBrakeCLI command. For a rough idea: it'll take the video track and transcode it to 8000kbps ABR with x264; it'll select the first audio track and convert it to 640kbps AC3 or 192kbps AAC, depending on channels, copying if possible; and it will add all subtitles in their current format, burning the first forced track
 
-I strongly recommend taking a look at Lisa Melton's [other_video_transcoding](https://github.com/lisamelton/other_video_transcoding) project, as it's more flexible and better tested.
+## Dependencies
 
-## Requirements
+Each tool has its own dependencies, I've tried to keep them as minimal as possible. Each command needs to be accessible on your `$PATH`
 
-`transcode` depends on `HandBrakeCLI`, `ffprobe`, `ffmpeg`, `mkvmerge`, and `mkvpropedit`
+ - `inspect.py` depends on `ffprobe` and `mkvmerge`
+ - `remux.py` depends on `mkvmerge`
+ - `preview-crop.py` depends on `ffprobe`, `ffmpeg`, and `mpv`
+ - `hevc-encode.py` depends on `HandBrakeCLI`, and optionally `mkvpropedit`
 
-`remux` depends on `ffprobe` and `mkvmerge`
+ ## Installation
 
-`inspect` depends on `ffprobe` and `ffmpeg`
-
-
-## Credits
-
-I've written these tools with lots of inspiration from Lisa Melton's excellent [video_transcoding](https://github.com/lisamelton/video_transcoding) and [other_video_transcoding](https://github.com/lisamelton/other_video_transcoding) projects. The crop detection is from `other-transcode`, and a lot of inspiration on how to drive `HandBrakeCLI` was take from transcode-video
+ - Drop the `.py` files somewhere in your `$PATH`.
+ - Get `HandBrakeCLI` from here: https://handbrake.fr/downloads2.php, drop it in your `$PATH`
+ - Get `ffmpeg` and `ffprobe` from here: https://ffmpeg.org/download.html, drop them in your `$PATH` (look for static builds)
+ - Get `mkvmerge` and `mkvpropedit` from here: https://mkvtoolnix.download/downloads.html, drop them into your `$PATH`
+ - Get `mpv` from here: https://mpv.io/installation/, drop it in your `$PATH`
