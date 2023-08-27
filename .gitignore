@@ -8,3 +8,5 @@
 other-tools/*
 !other-tools/*.py
 !other-tools/README.md
+!other-tools/*.json
+!other-tools/*.mmcp.xml

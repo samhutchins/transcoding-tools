@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<profile>
+  <name lang="eng">Sam</name>
+  <mkvSettings
+    setFirstSubtitleTrackAsDefault="false"
+  />
+  
+  <profileSettings
+    app_DefaultSelectionString="-sel:all,+sel:(favlang*subtitle*~forced),+sel:(favlang*audio*~special*~core),-sel:havemulti"
+  />
+  
+  <outputSettings name="copy" outputFormat="directCopy">
+    <description lang="eng">Copy track 1:1</description>
+  </outputSettings>
+  
+  <trackSettings input="default">
+    <output
+      outputSettingsName="copy"
+      defaultSelection="$app_DefaultSelectionString">
+    </output>
+  </trackSettings>
+</profile>
