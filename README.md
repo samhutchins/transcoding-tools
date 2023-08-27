@@ -10,7 +10,7 @@ Intentionally simple transcoding scripts
 
 1. Check cropping with `preview-crop.py`. It will open `mpv` with the `drawbox` filter to show what the detected crop is, and it will put a `crop.txt` file with the detected crop in the current working directory.
 
-1. Transcode with `hevc-encode.py`. If `crop.txt` is found next to the source, it will automatically be used for crop information. You'll get an output with whatever transcoding settings I'm currently using. Use `--dry-run` to see the HandBrakeCLI command. For a rough idea: it'll take the video track and transcode it to 8000kbps ABR with x264; it'll select the first audio track and convert it to 640kbps AC3 or 192kbps AAC, depending on channels, copying if possible; and it will add all subtitles in their current format, burning the first forced track
+1. Transcode with `hevc-encode.py`. If `crop.txt` is found next to the source, it will automatically be used for crop information. Use `--dry-run` to see the HandBrakeCLI command. For a rough idea: it'll take the video track and transcode it to a 10-bit HEVC video using x265; it'll select the first audio track and convert it to E-AC3, at varying bitrates depending on channels. It will add all subtitles in their current format, burning the first forced track
 
 ## Dependencies
 

@@ -7,3 +7,4 @@
 !other-tools
 other-tools/*
 !other-tools/*.py
+!other-tools/README.md
