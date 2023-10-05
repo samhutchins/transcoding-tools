@@ -1,50 +1,74 @@
 #!/usr/bin/env python3
 
-import os
+import asyncio
+import json
+from pathlib import Path
 from argparse import ArgumentParser
-from contextlib import contextmanager
-from subprocess import run
+from subprocess import PIPE, DEVNULL
 
 
-def main():
+async def main():
     parser = ArgumentParser()
-    parser.add_argument("directory")
-    parser.add_argument("-c", default="hevc-encode")
+    parser.add_argument("input_folder")
+    args = parser.parse_args()
 
-    args, other_args = parser.parse_known_args()
+    input_folder = Path(args.input_folder)
 
-    if not os.path.isdir(args.directory):
-        print("Not a folder")
-        exit()
+    queue = asyncio.Queue()
+    for file in input_folder.rglob("*.mkv"):
+        cwd = file.relative_to(input_folder).parent
+        await queue.put((file, cwd))
+    
+    tasks = []
+    for i in range(2):
+        tasks.append(asyncio.create_task(worker(f"worker-{i}", queue)))
+    
+    await queue.join()
+    await asyncio.gather(*tasks)
 
-    transcode_folder(os.path.abspath(args.directory), args.c, other_args)
+    print("Done")
+
+async def worker(name: str, queue: asyncio.Queue):
+    while not queue.empty():
+        file, cwd = await queue.get()
+        print(f"{name} is transcoding {file}...")
+        await transcode_file(file, cwd)
+        queue.task_done()
+     
+
+async def transcode_file(input_file: Path, cwd: Path):
+    command = [
+        "hevc-encode.py",
+        input_file,
+        "--crop", "auto"]
+     
+    if not await is_hd(input_file):
+        command += ["--vf", "avc"]
+        
+    cwd.mkdir(parents=True, exist_ok=True)
+
+    process = await asyncio.create_subprocess_exec(*command, cwd=cwd, stdout=DEVNULL, stderr=DEVNULL)
+    await process.wait()
 
 
-def transcode_folder(full_folder_path, command, args):
-    relative_folder_path = os.path.basename(os.path.normpath(full_folder_path))
+async def is_hd(input_file):
+        command = [
+            "ffprobe",
+            "-loglevel", "quiet",
+            "-show_streams",
+            "-show_format",
+            "-print_format", "json",
+            input_file
+        ]
 
-    if not os.path.exists(relative_folder_path):
-        os.mkdir(relative_folder_path)
+        process = await asyncio.create_subprocess_exec(*command, stdout=PIPE, stderr=DEVNULL)
+        output, _ = await process.communicate()
+        media_info = json.loads(output)
 
-    with pushd(relative_folder_path):
-        for item in os.listdir(full_folder_path):
-            item_path = os.path.join(full_folder_path, item)
-            if os.path.isdir(item_path):
-                transcode_folder(item_path, command, args)
-            elif os.path.isfile(item_path) and item_path.endswith(".mkv") and not os.path.exists(item):
-                run([command, item_path, *args], shell=True).check_returncode()
+        video = [ x for x in media_info["streams"] if x["codec_type"] == "video" ][0]
 
-
-
-@contextmanager
-def pushd(new_dir):
-    previous_dir = os.getcwd()
-    os.chdir(new_dir)
-    try:
-        yield
-    finally:
-        os.chdir(previous_dir)
+        return video["width"] >= 1280
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
