@@ -26,21 +26,10 @@ class BatchTranscoder:
     async def run_batch(self, num_workers: int):
         await self.fill_queue()
         
-        workers = []
-        for i in range(num_workers):
-            workers.append(asyncio.create_task(self.worker(f"worker-{i}")))
-        
-        await self.queue.join()
-        await asyncio.gather(*workers)
+        async with asyncio.TaskGroup() as tg:
+            for i in range(num_workers):
+                tg.create_task(self.worker(f"worker-{i}"))
 
-
-    async def fill_queue(self):
-        for file in self.input_folder.rglob("*.mkv"):
-            if file not in self.seen_files:
-                self.seen_files.append(file)
-                cwd = file.relative_to(self.input_folder).parent
-                await self.queue.put((file, cwd))
-    
 
     async def worker(self, name: str):
         while not self.queue.empty():
@@ -49,6 +38,14 @@ class BatchTranscoder:
             await self.transcode_file(file, cwd)
             await self.fill_queue()
             self.queue.task_done()
+
+
+    async def fill_queue(self):
+        for file in self.input_folder.rglob("*.mkv"):
+            if file not in self.seen_files:
+                self.seen_files.append(file)
+                cwd = file.relative_to(self.input_folder).parent
+                await self.queue.put((file, cwd))
         
 
     async def transcode_file(self, input_file: Path, cwd: Path):
@@ -86,4 +83,7 @@ class BatchTranscoder:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
