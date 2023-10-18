@@ -38,7 +38,6 @@ def main():
     output_options.add_argument("-c", "--container", metavar="CONTAINER", choices=["mp4", "mkv"], default="mkv", help="Container format for output")
 
     other_options = parser.add_argument_group("Other Options")
-    other_options.add_argument("--no-log", dest="log", action="store_false", help="suppress creation of .log file")
     other_options.add_argument("--debug", action="store_true", help="turn on debugging output")
     other_options.add_argument("-h", "--help", action="help", help="print this message and exit")
 
@@ -51,7 +50,6 @@ def main():
     transcoder.denoise = args.denoise
     transcoder.tonemap = args.tonemap
     transcoder.fit_1080 = args.fit_1080
-    transcoder.create_log = args.log
     transcoder.debug = args.debug
     transcoder.video_format = args.video_format
     transcoder.audio_format = args.audio_format
@@ -67,7 +65,6 @@ class Transcoder:
         self.denoise = None
         self.tonemap = False
         self.fit_1080 = False
-        self.create_log = True
         self.video_format = "hevc"
         self.audio_format = "eac3"
         self.container = "mkv"
@@ -115,41 +112,9 @@ class Transcoder:
         if self.dryrun:
             exit()
 
-        logfile = open(f"{output_file}.log", "wb") if self.create_log else None
-
-        try:
-            if logfile:
-                logfile.write((" ".join(map(lambda x: shlex.quote(x), command)) + "\n\n").encode("utf-8"))
-
-            with Popen(command, stderr=PIPE) as p:
-                for line in p.stderr:
-                    stderr.buffer.write(line)
-                    stderr.buffer.flush()
-                    if logfile:
-                        logfile.write(line)
-                        logfile.flush()
-
-                try:
-                    p.wait()
-                    if p.returncode != 0:
-                        message = f"Command failed: {command[0]}, exit code: {p.returncode}"
-                        print(message)
-                        if logfile:
-                            logfile.write(f"{message}\n".encode("utf-8"))
-                except TimeoutExpired as e:
-                    if logfile:
-                        logfile.write(f"Encoding failed: {e}\n".encode("utf-8"))
-                    exit(f"Encoding failed: {e}")
-
-            if os.path.exists(output_file) and shutil.which("mkvpropedit"):
-                try:
-                    run(["mkvpropedit", "--add-track-statistics-tags", output_file]).check_returncode()
-                except CalledProcessError:
-                    pass
-
-        finally:
-            if logfile:
-                logfile.close()
+        with open(f"{output_file}.log", "wb+") as logfile:
+            self.__run_handbrake(media_info, command, output_file, logfile)
+            self.__run_mkvpropedit(output_file)
 
     def __check_tools(self):
         # Require HandBrake 1.6.1+
@@ -204,8 +169,7 @@ class Transcoder:
         hb_scan_info, media_info = basic_scan()
         if self.crop == "auto":
             print("Detecting crop...")
-            duration = media_info["Duration"]
-            duration = (duration["Hours"] * 60 * 60) + (duration["Minutes"] * 60) + duration["Seconds"]
+            duration = self.__get_duration_seconds(media_info)
             num_previews = int(duration / 60 * 5)
             hb_scan_info, media_info = basic_scan(num_previews)
 
@@ -227,6 +191,11 @@ class Transcoder:
 
         media_info["InterlaceDetected"] = interlaced
         return media_info
+
+    def __get_duration_seconds(self, media_info):
+        duration = media_info["Duration"]
+        return (duration["Hours"] * 60 * 60) + (duration["Minutes"] * 60) + duration["Seconds"]
+        
 
     def __get_picture_args(self, media_info):
         if self.crop == "auto":
@@ -441,6 +410,38 @@ class Transcoder:
             subtitle_args = []
 
         return subtitle_args
+    
+    def __run_handbrake(self, media_info, command, output_file, logfile):
+        logfile.write((" ".join(map(lambda x: shlex.quote(x), command)) + "\n\n").encode("utf-8"))
+
+        with Popen(command, stderr=PIPE) as p:
+            last_line = None
+            for line in p.stderr:
+                last_line = line
+                stderr.buffer.write(line)
+                stderr.buffer.flush()
+                logfile.write(line)
+                logfile.flush()
+            
+            p.wait()
+            clean_exit = b"HandBrake has exited.\n" == last_line
+            if not clean_exit or p.returncode != 0:
+                message = f"\nCommand failed: {command[0]}, exit code: {p.returncode}, clean exit: {clean_exit}"
+                print(message)
+                logfile.write(f"{message}\n".encode("utf-8"))
+                exit(1) 
+        
+        media_info_out = self.__scan_media(output_file)
+        input_duration = self.__get_duration_seconds(media_info)
+        output_duration = self.__get_duration_seconds(media_info_out)
+
+        if input_duration != output_duration:
+            print(f"WARNING: Output file duration doesn't match input file duration. {input_duration} vs {output_duration}")
+
+    @staticmethod
+    def __run_mkvpropedit(output_file):
+        if os.path.exists(output_file) and shutil.which("mkvpropedit"):
+            run(["mkvpropedit", "--add-track-statistics-tags", output_file])
 
 
 if __name__ == "__main__":
