@@ -7,7 +7,7 @@ import shlex
 import shutil
 from argparse import ArgumentParser
 from collections import defaultdict
-from subprocess import DEVNULL, PIPE, Popen, TimeoutExpired, run, CalledProcessError
+from subprocess import DEVNULL, PIPE, Popen, run
 from sys import exit, stderr
 
 

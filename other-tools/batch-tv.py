@@ -12,16 +12,17 @@ async def main():
     parser.add_argument("input_folder", type=Path)
     parser.add_argument("-w", "--workers", type=int, default=2)
     parser.add_argument("-m", "--monitor", action="store_true", help="monitor the input folder for new files")
-    args = parser.parse_args()
+    args, transcode_command = parser.parse_known_args()
 
-    transcoder = BatchTranscoder(args.input_folder)
+    transcoder = BatchTranscoder(args.input_folder, args.monitor, transcode_command)
     await transcoder.run_batch(args.workers)
 
 class BatchTranscoder:
-    def __init__(self, input_folder: Path, monitor_input: bool) -> None:
+    def __init__(self, input_folder: Path, monitor_input: bool, transcode_command) -> None:
         self.input_folder = input_folder
         self.monitor_input = monitor_input
         self.seen_files = []
+        self.transcode_command = transcode_command if transcode_command else ["transcode.py", "--crop", "auto"]
         self.queue = asyncio.Queue()
 
 
@@ -54,14 +55,12 @@ class BatchTranscoder:
         
 
     async def transcode_file(self, input_file: Path, cwd: Path):
-        command = [
-            "hevc-encode.py",
-            input_file,
-            "--crop", "auto"]
+        command = list(self.transcode_command)
+        command.append(str(input_file))
         
         if not await self.is_hd(input_file):
             command += ["--vf", "avc"]
-            
+
         cwd.mkdir(parents=True, exist_ok=True)
 
         process = await asyncio.create_subprocess_exec(*command, cwd=cwd, stdout=DEVNULL, stderr=DEVNULL)
