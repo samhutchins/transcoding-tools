@@ -66,7 +66,7 @@ class Transcoder:
             ]
 
             handbrake_command += self.__get_picture_args()
-            handbrake_command += self.__get_video_args(media_info)
+            handbrake_command += self.__get_video_args()
             handbrake_command += self.__get_audio_args(media_info)
 
             try:
@@ -121,29 +121,17 @@ class Transcoder:
     def __get_picture_args():
         return [
             "--crop", "0:0:0:0",
-            "--loose-anamorphic"]
+            "--non-anamorphic",
+            "--maxWidth", "1920"]
 
     @staticmethod
-    def __get_video_args(media_info):
-        geometry = media_info["Geometry"]
-        if geometry["Width"] > 1920 or geometry["Height"] > 1080:
-            bitrate = 10000
-        elif geometry["Width"] > 1280 or geometry["Height"] > 720:
-            bitrate = 6000
-        elif geometry["Width"] * geometry["Height"] > 720 * 576:
-            bitrate = 3000
-        else:
-            bitrate = 1500
-
-        vbv = bitrate * 3
-
+    def __get_video_args():
         return [
-            "--vb", str(bitrate),
-            "--encoder", "x264",
-            "--multi-pass", "--turbo",
+            "-q", "45",
+            "--enable-hw-decoding", "videotoolbox",
+            "--encoder", "vt_h264",
             "--encoder-profile", "high",
-            "--encoder-preset", "medium",
-            "--encopts", f"vbv-maxrate={vbv}:vbv-bufsize={vbv}"]
+            "--encoder-preset", "quality"]
 
     def __get_audio_args(self, media_info):
         audio_tracks = media_info["AudioList"]
@@ -172,15 +160,6 @@ class Transcoder:
 
     @staticmethod
     def __get_aac_args(audio_track):
-        handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
-        handbrake_encoders = [x.strip() for x in handbrake_help.partition("Select audio encoder(s):")[2].partition("\"")[0].splitlines()]
-        for encoder in ["ca_aac", "fdk_aac", "av_aac"]:
-            if encoder in handbrake_encoders:
-                aac_encoder = encoder
-                break
-        else:
-            aac_encoder = "av_aac"
-
         if audio_track["ChannelCount"] > 2:
             bitrate = "384"
         elif audio_track["ChannelCount"] == 2:
@@ -188,7 +167,7 @@ class Transcoder:
         else:
             bitrate = "96"
 
-        return aac_encoder, bitrate
+        return "ca_aac", bitrate
 
 
 if __name__ == "__main__":
