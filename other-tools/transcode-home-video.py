@@ -127,7 +127,7 @@ class Transcoder:
     @staticmethod
     def __get_video_args():
         return [
-            "-q", "45",
+            "-b", "6000",
             "--enable-hw-decoding", "videotoolbox",
             "--encoder", "vt_h264",
             "--encoder-profile", "high",
