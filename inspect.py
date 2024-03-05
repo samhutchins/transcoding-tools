@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, run, CalledProcessError
 from sys import exit
+import pickle
 
 
 def main():
@@ -36,7 +37,6 @@ class Inspector:
         
         self.__verify_tools()
 
-        # TODO support inspecting an mpls file
         if file.endswith("bdmv"):
             return self.__bluray_inspect(file)
         else:
@@ -64,8 +64,15 @@ class Inspector:
         print(inspection_result)
 
     def __bluray_inspect(self, file):
-        #TODO persist this cache to the disc
-        ffprobe_cache = dict()
+        cache_file = Path(file).parent.parent / "ffprobe_cache"
+        if cache_file.exists():
+            with open(cache_file, "rb") as f:
+                try:
+                    ffprobe_cache = pickle.load(f)
+                except:
+                    ffprobe_cache = dict()
+        else:
+            ffprobe_cache = dict()
 
         playlist_info = dict()
         playlist_folder = Path(file).parent / "PLAYLIST"
@@ -85,7 +92,7 @@ class Inspector:
                 elif track["type"] == "subtitles":
                     all_subtitle_mkvmerge_info.append(track)
 
-            for segment in mkvmerge_info["container"]["properties"]["playlist_file"]:
+            for segment in set(mkvmerge_info["container"]["properties"]["playlist_file"]):
                 if segment in ffprobe_cache:
                     format_info, stream_info, frame_info = ffprobe_cache[segment]
                 else:
@@ -121,6 +128,9 @@ class Inspector:
                     inspection_result.subtitles.append(Subtitle.from_bluray(stream, all_subtitle_mkvmerge_info[subtitle_index-1], subtitle_index))
 
             playlist_info[playlist] = inspection_result
+
+        with open(cache_file, "wb") as f:
+            pickle.dump(ffprobe_cache, f)
 
         for key in sorted(playlist_info, key=lambda k: playlist_info[k].video[0].duration):
             print(key)
