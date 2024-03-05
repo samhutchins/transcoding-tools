@@ -36,6 +36,7 @@ class Inspector:
         
         self.__verify_tools()
 
+        # TODO support inspecting an mpls file
         if file.endswith("bdmv"):
             return self.__bluray_inspect(file)
         else:
@@ -63,6 +64,7 @@ class Inspector:
         print(inspection_result)
 
     def __bluray_inspect(self, file):
+        #TODO persist this cache to the disc
         ffprobe_cache = dict()
 
         playlist_info = dict()

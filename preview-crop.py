@@ -7,7 +7,7 @@ from subprocess import run, DEVNULL, PIPE
 import json
 import re
 import os
-
+from pathlib import Path
 
 def main():
     parser = ArgumentParser()
@@ -21,16 +21,27 @@ def main():
     mpv_command = [
         "mpv",
         "--no-audio",
-        f"--vf=lavfi=[drawbox={crop.get_mpv_crop()}:invert:1]",
-        args.file]
-    
-    run(mpv_command, stdout=DEVNULL, stdin=DEVNULL)
+        f"--vf=lavfi=[drawbox={crop.get_mpv_crop()}:invert:1]"]
 
-    if not os.path.exists("crop.txt"):
-        with open("crop.txt", "w") as f:
-            f.write(crop.get_handbrake_crop())
+    if args.file.endswith(".mpls"):
+        input_folder = Path(args.file).parent.parent.parent
+        playlist = int(os.path.splitext(os.path.basename(args.file))[0])
+        mpv_command += [
+            f"bd://mpls/{playlist}",
+            f"--bluray-device={input_folder}"]
     else:
-        print(f"crop.txt already exists. Detected crop: {crop.get_handbrake_crop()}")
+        mpv_command += [args.file]
+
+    run(mpv_command, stdout=DEVNULL, stderr=DEVNULL)
+
+    if args.file.endswith(".mpls"):
+        print(crop.get_handbrake_crop())
+    else:
+        if not os.path.exists("crop.txt"):
+            with open("crop.txt", "w") as f:
+                f.write(crop.get_handbrake_crop())
+        else:
+            print(f"crop.txt already exists. Detected crop: {crop.get_handbrake_crop()}")
 
 
 class CropDetector:
@@ -84,17 +95,21 @@ class CropDetector:
         ignore_count = 0
 
         path = media_info["format"]["filename"]
+        if path.startswith("bluray:"):
+            playlist = int(os.path.splitext(os.path.basename(file))[0])
 
         for step in range(1, steps + 1):
             s_crop = all_crop.copy()
             position = interval * step
 
+            # ffmpeg ... -playlist <number> -i bluray:// ...
             command = [
                 "ffmpeg",
                 "-hide_banner",
                 "-nostdin",
                 "-noaccurate_seek",
                 "-ss", str(position),
+                *(["-playlist", str(playlist)] if path.startswith("bluray") else []),
                 "-i", path,
                 "-frames:v", "15",
                 "-filter:v", "cropdetect=24.0/255:2",
@@ -164,9 +179,21 @@ class CropDetector:
             "-loglevel", "quiet",
             "-show_streams",
             "-show_format",
-            "-print_format", "json",
-            input_file
+            "-print_format", "json"
         ]
+
+        if input_file.endswith(".mpls"):
+            input_folder = Path(input_file).parent.parent.parent
+            playlist = int(os.path.splitext(os.path.basename(input_file))[0])
+            
+            command += [
+                "-playlist", str(playlist),
+                f"bluray:{input_folder}"
+            ]
+        else:
+            command += [
+                input_file
+            ]
 
         output = run(command, stdout=PIPE, stderr=DEVNULL).stdout
         return json.loads(output)

@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from subprocess import DEVNULL, PIPE, Popen, run
 from sys import exit, stderr
-
+from pathlib import Path
 
 def main():
     parser = ArgumentParser(
@@ -19,7 +19,10 @@ def main():
         add_help=False)
 
     input_options = parser.add_argument_group("Input Options")
-    input_options.add_argument("file", metavar="FILE", help="path to source file")
+    input_options.add_argument("file", metavar="FILE", help="path to a source file")
+    input_options.add_argument("-a", "--audio", nargs="+", type=int, help="Select audio tracks. Default: all tracks")
+    input_options.add_argument("-s", "--subtitle", nargs="+", type=int, help="Select subtitle tracks. Default: all tracks")
+    input_options.add_argument("-f", "--force-subtitle", type=int, help="Force (burn) a subtitle track. Default: based on input")
 
     output_options = parser.add_argument_group("Output Options")
     output_options.add_argument("--dry-run", action="store_true", default=False,
@@ -43,7 +46,37 @@ def main():
 
     args = parser.parse_args()
 
+    if os.path.basename(args.file) == "title_info.json":
+        with open(args.file, "r") as f:
+            title_info = json.load(f)
+
+        for title in title_info:
+            transcoder = __create_transcoder(args)
+            transcoder.output_name = title["name"]
+            if not args.audio:
+                transcoder.audio = title["audio"]
+            
+            if not args.subtitle:
+                transcoder.subtitle = title["subtitle"]
+
+            if not args.force_subtitle:
+                transcoder.force_subtitle = title["forced_subtitle"]
+
+            if not args.crop:
+                transcoder.crop = title["crop"]
+
+            input_file = Path(args.file).parent / "BDMV" / "PLAYLIST" / f"{title['playlist']:05}.mpls"
+            transcoder.transcode(str(input_file))
+    else:
+        transcoder = __create_transcoder(args)
+        transcoder.transcode(args.file)
+
+
+def __create_transcoder(args):
     transcoder = Transcoder()
+    transcoder.audio = args.audio
+    transcoder.subtitle = args.subtitle
+    transcoder.force_subtitle = args.force_subtitle
     transcoder.dryrun = args.dry_run
     transcoder.crop = args.crop
     transcoder.preserve_field_rate = args.preserve_field_rate
@@ -54,11 +87,15 @@ def main():
     transcoder.video_format = args.video_format
     transcoder.audio_format = args.audio_format
     transcoder.container = args.container
-    transcoder.transcode(args.file)
 
+    return transcoder
 
 class Transcoder:
     def __init__(self):
+        self.output_name = None
+        self.audio = None
+        self.subtitle = None
+        self.forced_subtitle = None
         self.dryrun = False
         self.crop = None
         self.preserve_field_rate = False
@@ -78,7 +115,11 @@ class Transcoder:
         if os.path.isdir(input_file):
             exit("Folder inputs are not supported")
 
-        output_file = os.path.splitext(os.path.basename(input_file))[0] + f".{self.container}"
+        if self.output_name:
+            output_file = f"{self.output_name}.{self.container}"
+        else:
+            output_file = os.path.splitext(os.path.basename(input_file))[0] + f".{self.container}"
+        
         if not self.dryrun and os.path.exists(output_file):
             exit(f"Output file exists: {output_file}")
 
@@ -96,11 +137,19 @@ class Transcoder:
         command = [
             "HandBrakeCLI",
             "--no-dvdnav",
-            "--input", input_file,
             "--output", output_file,
             "--previews", "1",
             "--markers"
         ]
+
+        if input_file.endswith(".mpls"):
+            input_folder = Path(input_file).parent.parent.parent
+            title = self.__get_handbrake_title(input_file)
+            command += [
+                "--input", str(input_folder),
+                "-t", str(title)]
+        else:
+            command += ["--input", input_file]
 
         command += self.__get_picture_args(media_info)
         command += self.__get_video_args(media_info)
@@ -145,13 +194,23 @@ class Transcoder:
             print(f"WARN: Unable to check HandBrake version ({hb_version})")
 
     def __scan_media(self, input_file):
+        if input_file.endswith(".mpls"):
+            input_folder = Path(input_file).parent.parent.parent
+            title = self.__get_handbrake_title(input_file)
+
         def basic_scan(previews=10):
             scan_command = ["HandBrakeCLI",
                             "--json",
                             "--scan",
                             "--crop-mode", "conservative",
-                            "--previews", str(previews),
-                            "--input", input_file]
+                            "--previews", str(previews)]
+            
+            if input_file.endswith(".mpls"):
+                scan_command += [
+                    "-t", str(title),
+                    "--input", input_folder]
+            else:
+                scan_command += ["--input", input_file]
 
             command_output = run(scan_command, stdout=PIPE, stderr=PIPE)
             json_scan_result = command_output.stdout.partition(b"JSON Title Set:")[2]
@@ -191,6 +250,32 @@ class Transcoder:
 
         media_info["InterlaceDetected"] = interlaced
         return media_info
+
+    def __get_handbrake_title(self, playlist_file):
+        input_folder = Path(playlist_file).parent.parent.parent
+        playlist_file = os.path.basename(playlist_file)
+
+        command = [
+            "HandBrakeCLI",
+            "--scan",
+            "-t", "0",
+            "--min-duration", "9000",  # large number to stop HandBrake from _actually_ scanning anything
+            "--input", input_folder
+        ]
+
+        command_output = run(command, stdout=DEVNULL, stderr=PIPE).stderr.splitlines()
+
+        index = 0
+        for line in command_output:
+            if playlist_file.upper().encode() in line:
+                index = index - 1
+                break
+            
+            index += 1
+        else:
+            exit("Can't find playlist in HandBrake scan")
+
+        return int(command_output[index].split(b' ')[-1])
 
     def __get_duration_seconds(self, media_info):
         duration = media_info["Duration"]
@@ -306,22 +391,23 @@ class Transcoder:
         audio_args = defaultdict(list)
 
         for audio_track in audio_tracks:
-            if self.audio_format == "copy" or audio_track["CodecName"] in ["ac3", "eac3", "aac", "opus"]:
-                encoder, bitrate = "copy", ""
-            elif self.audio_format == "ac3":
-                encoder, bitrate = self.__get_ac3_args(audio_track)
-            elif self.audio_format == "eac3":
-                encoder, bitrate = self.__get_eac3_args(audio_track)
-            elif self.audio_format == "aac":
-                encoder, bitrate = self.__get_aac_args(audio_track)
-            elif self.audio_format == "opus":
-                encoder, bitrate = self.__get_opus_args(audio_track)
-            else:
-                exit(f"Unknown audio format: {self.audio_format}")
+            if self.audio == None or audio_track["TrackNumber"] in self.audio:
+                if self.audio_format == "copy" or audio_track["CodecName"] in ["ac3", "eac3", "aac", "opus"]:
+                    encoder, bitrate = "copy", ""
+                elif self.audio_format == "ac3":
+                    encoder, bitrate = self.__get_ac3_args(audio_track)
+                elif self.audio_format == "eac3":
+                    encoder, bitrate = self.__get_eac3_args(audio_track)
+                elif self.audio_format == "aac":
+                    encoder, bitrate = self.__get_aac_args(audio_track)
+                elif self.audio_format == "opus":
+                    encoder, bitrate = self.__get_opus_args(audio_track)
+                else:
+                    exit(f"Unknown audio format: {self.audio_format}")
 
-            audio_args["track"].append(str(audio_track["TrackNumber"]))
-            audio_args["encoder"].append(encoder)
-            audio_args["bitrate"].append(bitrate)
+                audio_args["track"].append(str(audio_track["TrackNumber"]))
+                audio_args["encoder"].append(encoder)
+                audio_args["bitrate"].append(bitrate)
 
         tracks = ",".join(audio_args["track"])
         encoders = ",".join(audio_args["encoder"])
@@ -391,9 +477,16 @@ class Transcoder:
         added_subtitles = []
         forced_subtitle = None
         for subtitle in media_info["SubtitleList"]:
-            added_subtitles.append(str(subtitle["TrackNumber"]))
-            if not forced_subtitle and subtitle["Attributes"]["Forced"]:
-                forced_subtitle = str(subtitle["TrackNumber"])
+            if self.subtitle == None or subtitle["TrackNumber"] in self.subtitle:
+                added_subtitles.append(str(subtitle["TrackNumber"]))
+                if not forced_subtitle and subtitle["Attributes"]["Forced"]:
+                    forced_subtitle = str(subtitle["TrackNumber"])
+        
+        if self.force_subtitle:
+            if str(self.force_subtitle) not in added_subtitles:
+                added_subtitles.append(str(self.force_subtitle))
+            
+            forced_subtitle = str(self.force_subtitle)
 
         if self.container == "mkv" and added_subtitles:
             subtitle_args = [

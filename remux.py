@@ -100,6 +100,7 @@ class Remuxer:
         return args
 
     def __get_subtitle_args(self, media_info):
+        # TODO ensure subtitles don't have default/forced flag set when remuxing from mpls
         subtitle_tracks = [ x for x in media_info["tracks"] if x["type"] == "subtitles"]
 
         selected_tracks = []
