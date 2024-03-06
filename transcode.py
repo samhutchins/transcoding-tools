@@ -159,7 +159,7 @@ class Transcoder:
         print(" ".join(map(lambda x: shlex.quote(x), command)))
 
         if self.dryrun:
-            exit()
+            return
 
         with open(f"{output_file}.log", "wb+") as logfile:
             self.__run_handbrake(media_info, command, output_file, logfile)
