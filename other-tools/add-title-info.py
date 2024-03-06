@@ -16,8 +16,8 @@ def main():
 
     args = parser.parse_args()
 
-    if os.path.exists("../title_info.json"):
-        with open("../title_info.json", "r") as f:
+    if os.path.exists("title_info.json"):
+        with open("title_info.json", "r") as f:
             title_info = json.load(f)
     else:
         title_info = list()
@@ -32,7 +32,7 @@ def main():
 
     title_info.append(title)
 
-    with open("../title_info.json", "w") as f:
+    with open("title_info.json", "w") as f:
         json.dump(title_info, f)
 
     print("Done.")
