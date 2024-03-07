@@ -39,6 +39,8 @@ class Inspector:
 
         if file.endswith("bdmv"):
             return self.__bluray_inspect(file)
+        elif file.endswith("mpls"):
+            return self.__mpls_inspect(file)
         else:
             return self.__single_file_inspect(file)
 
@@ -64,69 +66,12 @@ class Inspector:
         print(inspection_result)
 
     def __bluray_inspect(self, file):
-        cache_file = Path(file).parent.parent / "ffprobe_cache"
-        if cache_file.exists():
-            with open(cache_file, "rb") as f:
-                try:
-                    ffprobe_cache = pickle.load(f)
-                except:
-                    ffprobe_cache = dict()
-        else:
-            ffprobe_cache = dict()
+        cache_file, ffprobe_cache = self.__get_ffprobe_cache(file)
 
         playlist_info = dict()
         playlist_folder = Path(file).parent / "PLAYLIST"
         for playlist in playlist_folder.glob("*.mpls"):
-            command = ["mkvmerge", "-J", str(playlist)]
-            mkvmerge_info = json.loads(run(command, stdout=PIPE).stdout)
-
-            all_audio_mkvmerge_info = list()
-            all_subtitle_mkvmerge_info = list()
-            all_stream_info = list()
-            all_format_info = list()
-            all_frame_info = list()
-
-            for track in mkvmerge_info["tracks"]:
-                if track["type"] == "audio":
-                    all_audio_mkvmerge_info.append(track)
-                elif track["type"] == "subtitles":
-                    all_subtitle_mkvmerge_info.append(track)
-
-            for segment in set(mkvmerge_info["container"]["properties"]["playlist_file"]):
-                if segment in ffprobe_cache:
-                    format_info, stream_info, frame_info = ffprobe_cache[segment]
-                else:
-                    format_info, stream_info, frame_info = self.__ffprobe(segment)
-                    subtitle_stats = self.__read_track_statistics(segment)
-                    stream_info[:] = [stream for stream in stream_info if stream["codec_type"] != "subtitle"]
-                    stream_info.extend(subtitle_stats)
-                    ffprobe_cache[segment] = (format_info, stream_info, frame_info)
-
-                all_format_info.append(format_info)
-                all_stream_info.append(stream_info)
-                all_frame_info.append(frame_info)
-
-            # all_stream_info is a 2d matrix
-            # [ [seg1_vid1, seg1_aud1, seg1_aud2, seg1_sub1], [seg2_vid1, seg2_aud1, seg2_aud2, seg2_sub1] ]
-            # We need to rotate it counter-clockwise, so it looks like this:
-            # [ [seg1_vid1, seg2_vid1], [seg1_aud1, seg2_aud1], [seg1_aud2, seg2_aud2], [seg1_sub1, seg2_sub1] ]
-            all_stream_info[:] = list(zip(*all_stream_info))[::-1]
-            # sort by stream index, so everything's in the right order
-            all_stream_info.sort(key=lambda x: x[0]["index"])
-
-            inspection_result = InspectionResult()
-            audio_index = 0
-            subtitle_index = 0
-            for stream in all_stream_info:
-                if stream[0]["codec_type"] == "video":
-                    inspection_result.video.append(Video.from_bluray(stream, all_format_info, all_frame_info))
-                elif stream[0]["codec_type"] == "audio":
-                    audio_index += 1
-                    inspection_result.audio.append(Audio.from_bluray(stream, all_audio_mkvmerge_info[audio_index-1], audio_index))
-                elif stream[0]["codec_type"] == "subtitle":
-                    subtitle_index += 1
-                    inspection_result.subtitles.append(Subtitle.from_bluray(stream, all_subtitle_mkvmerge_info[subtitle_index-1], subtitle_index))
-
+            inspection_result = self.__inspect_mpls(ffprobe_cache, playlist)
             playlist_info[playlist] = inspection_result
 
         with open(cache_file, "wb") as f:
@@ -135,6 +80,84 @@ class Inspector:
         for key in sorted(playlist_info, key=lambda k: playlist_info[k].video[0].duration):
             print(key)
             print(playlist_info[key])
+
+    def __mpls_inspect(self, file):
+        cache_file, ffprobe_cache = self.__get_ffprobe_cache(file)
+        inspection_result = self.__inspect_mpls(ffprobe_cache, file)
+        with open(cache_file, "wb") as f:
+            pickle.dump(ffprobe_cache, f)
+
+        print(inspection_result)
+
+    def __get_ffprobe_cache(self, file):
+        if file.endswith("bdmv"):
+            cache_file = Path(file).parent.parent / "ffprobe_cache"
+        elif file.endswith("mpls"):
+            cache_file = Path(file).parent.parent.parent / "ffprobe_cache"
+        else:
+            exit("Unexpected file for ffprobe_cache")
+
+        if cache_file.exists():
+            with open(cache_file, "rb") as f:
+                try:
+                    ffprobe_cache = pickle.load(f)
+                except:
+                    ffprobe_cache = dict()
+        else:
+            ffprobe_cache = dict()
+        return cache_file, ffprobe_cache
+
+    def __inspect_mpls(self, ffprobe_cache, playlist):
+        command = ["mkvmerge", "-J", str(playlist)]
+        mkvmerge_info = json.loads(run(command, stdout=PIPE).stdout)
+        all_audio_mkvmerge_info = list()
+        all_subtitle_mkvmerge_info = list()
+        all_stream_info = list()
+        all_format_info = list()
+        all_frame_info = list()
+        for track in mkvmerge_info["tracks"]:
+            if track["type"] == "audio":
+                all_audio_mkvmerge_info.append(track)
+            elif track["type"] == "subtitles":
+                all_subtitle_mkvmerge_info.append(track)
+
+        for segment in set(mkvmerge_info["container"]["properties"]["playlist_file"]):
+            if segment in ffprobe_cache:
+                format_info, stream_info, frame_info = ffprobe_cache[segment]
+            else:
+                format_info, stream_info, frame_info = self.__ffprobe(segment)
+                subtitle_stats = self.__read_track_statistics(segment)
+                stream_info[:] = [stream for stream in stream_info if stream["codec_type"] != "subtitle"]
+                stream_info.extend(subtitle_stats)
+                ffprobe_cache[segment] = (format_info, stream_info, frame_info)
+
+            all_format_info.append(format_info)
+            all_stream_info.append(stream_info)
+            all_frame_info.append(frame_info)
+
+        # all_stream_info is a 2d matrix
+        # [ [seg1_vid1, seg1_aud1, seg1_aud2, seg1_sub1], [seg2_vid1, seg2_aud1, seg2_aud2, seg2_sub1] ]
+        # We need to rotate it counter-clockwise, so it looks like this:
+        # [ [seg1_vid1, seg2_vid1], [seg1_aud1, seg2_aud1], [seg1_aud2, seg2_aud2], [seg1_sub1, seg2_sub1] ]
+        all_stream_info[:] = list(zip(*all_stream_info))[::-1]
+        # sort by stream index, so everything's in the right order
+        all_stream_info.sort(key=lambda x: x[0]["index"])
+        inspection_result = InspectionResult()
+        audio_index = 0
+        subtitle_index = 0
+        for stream in all_stream_info:
+            if stream[0]["codec_type"] == "video":
+                inspection_result.video.append(Video.from_bluray(stream, all_format_info, all_frame_info))
+            elif stream[0]["codec_type"] == "audio":
+                audio_index += 1
+                inspection_result.audio.append(
+                    Audio.from_bluray(stream, all_audio_mkvmerge_info[audio_index - 1], audio_index))
+            elif stream[0]["codec_type"] == "subtitle":
+                subtitle_index += 1
+                inspection_result.subtitles.append(
+                    Subtitle.from_bluray(stream, all_subtitle_mkvmerge_info[subtitle_index - 1], subtitle_index))
+
+        return inspection_result
 
     @staticmethod
     def __verify_tools():
