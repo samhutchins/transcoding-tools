@@ -380,11 +380,12 @@ class Transcoder:
             level = "3.0" if not self.preserve_field_rate else "3.1"
 
         return [
-            "-q", "26",
+            "-q", "24",
             "--encoder", "svt_av1_10bit",
             "--encoder-level", level,
             "--encoder-profile", "main",
-            "--encoder-preset", "6"]
+            "--encoder-preset", "5",
+            "--encopts", "enable-qm=1:qm-min=0"]
 
     def __get_audio_args(self, media_info):
         audio_tracks = media_info["AudioList"]
