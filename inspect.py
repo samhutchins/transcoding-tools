@@ -4,6 +4,7 @@
 import json
 import os
 import pprint
+import sys
 from argparse import ArgumentParser
 from datetime import timedelta
 from pathlib import Path
@@ -84,8 +85,11 @@ class Inspector:
     def __mpls_inspect(self, file):
         cache_file, ffprobe_cache = self.__get_ffprobe_cache(file)
         inspection_result = self.__inspect_mpls(ffprobe_cache, file)
-        with open(cache_file, "wb") as f:
-            pickle.dump(ffprobe_cache, f)
+        try:
+            with open(cache_file, "wb") as f:
+                pickle.dump(ffprobe_cache, f)
+        except OSError as e:
+            print(f"Failed to save cache file: {e}", file=sys.stderr)
 
         print(inspection_result)
 
