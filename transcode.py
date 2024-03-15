@@ -6,10 +6,10 @@ import re
 import shlex
 import shutil
 from argparse import ArgumentParser
-from collections import defaultdict
 from subprocess import DEVNULL, PIPE, Popen, run
 from sys import exit, stderr
 from pathlib import Path
+
 
 def main():
     parser = ArgumentParser(
@@ -38,7 +38,6 @@ def main():
                                 help="Restrict output to a 1080p frame")
     output_options.add_argument("--vf",  dest="video_format", metavar="FORMAT", choices=["hevc", "avc", "av1"], default="hevc", help="video format used in output. Default: hevc")
     output_options.add_argument("--af", dest="audio_format", metavar="FORMAT", choices=["ac3", "eac3", "aac", "opus", "copy"], default="eac3", help="audio format used in output. Default: eac3. Note: ac3, eac3, aac, and opus are all passed through without transcoding")
-    output_options.add_argument("-c", "--container", metavar="CONTAINER", choices=["mp4", "mkv"], default="mkv", help="Container format for output")
 
     other_options = parser.add_argument_group("Other Options")
     other_options.add_argument("--debug", action="store_true", help="turn on debugging output")
@@ -60,7 +59,7 @@ def main():
                 transcoder.subtitle = title["subtitle"]
 
             if not args.force_subtitle:
-                transcoder.force_subtitle = title["forced_subtitle"]
+                transcoder.forced_subtitle = title["forced_subtitle"]
 
             if not args.crop:
                 transcoder.crop = title["crop"]
@@ -76,7 +75,7 @@ def __create_transcoder(args):
     transcoder = Transcoder()
     transcoder.audio = args.audio
     transcoder.subtitle = args.subtitle
-    transcoder.force_subtitle = args.force_subtitle
+    transcoder.forced_subtitle = args.force_subtitle
     transcoder.dryrun = args.dry_run
     transcoder.crop = args.crop
     transcoder.preserve_field_rate = args.preserve_field_rate
@@ -86,9 +85,9 @@ def __create_transcoder(args):
     transcoder.debug = args.debug
     transcoder.video_format = args.video_format
     transcoder.audio_format = args.audio_format
-    transcoder.container = args.container
 
     return transcoder
+
 
 class Transcoder:
     def __init__(self):
@@ -104,7 +103,6 @@ class Transcoder:
         self.fit_1080 = False
         self.video_format = "hevc"
         self.audio_format = "eac3"
-        self.container = "mkv"
 
         self.debug = False
 
@@ -116,9 +114,9 @@ class Transcoder:
             exit("Folder inputs are not supported")
 
         if self.output_name:
-            output_file = f"{self.output_name}.{self.container}"
+            output_file = f"{self.output_name}.mkv"
         else:
-            output_file = os.path.splitext(os.path.basename(input_file))[0] + f".{self.container}"
+            output_file = os.path.splitext(os.path.basename(input_file))[0] + ".mkv"
         
         if not self.dryrun and os.path.exists(output_file):
             exit(f"Output file exists: {output_file}")
@@ -153,8 +151,9 @@ class Transcoder:
 
         command += self.__get_picture_args(media_info)
         command += self.__get_video_args(media_info)
-        command += self.__get_audio_args(media_info)
-        command += self.__get_subtitle_args(media_info)
+        audio_args, audio_lang = self.__get_audio_args(media_info)
+        command += audio_args
+        command += self.__get_subtitle_args(media_info, audio_lang)
 
         print(" ".join(map(lambda x: shlex.quote(x), command)))
 
@@ -280,7 +279,6 @@ class Transcoder:
     def __get_duration_seconds(self, media_info):
         duration = media_info["Duration"]
         return (duration["Hours"] * 60 * 60) + (duration["Minutes"] * 60) + duration["Seconds"]
-        
 
     def __get_picture_args(self, media_info):
         if self.crop == "auto":
@@ -389,37 +387,33 @@ class Transcoder:
 
     def __get_audio_args(self, media_info):
         audio_tracks = media_info["AudioList"]
-        audio_args = defaultdict(list)
 
-        for audio_track in audio_tracks:
-            if self.audio == None or audio_track["TrackNumber"] in self.audio:
-                if self.audio_format == "copy" or audio_track["CodecName"] in ["ac3", "eac3", "aac", "opus"]:
-                    encoder, bitrate = "copy", ""
-                elif self.audio_format == "ac3":
-                    encoder, bitrate = self.__get_ac3_args(audio_track)
-                elif self.audio_format == "eac3":
-                    encoder, bitrate = self.__get_eac3_args(audio_track)
-                elif self.audio_format == "aac":
-                    encoder, bitrate = self.__get_aac_args(audio_track)
-                elif self.audio_format == "opus":
-                    encoder, bitrate = self.__get_opus_args(audio_track)
-                else:
-                    exit(f"Unknown audio format: {self.audio_format}")
+        if audio_tracks:
+            audio_track_index = self.audio if self.audio else 1
+            selected_audio_track = audio_tracks[audio_track_index - 1]
+            language = selected_audio_track["LanguageCode"]
+            if self.audio_format == "copy" or selected_audio_track["CodecName"] in ["ac3", "eac3", "aac", "opus"]:
+                encoder, bitrate = "copy", ""
+            elif self.audio_format == "ac3":
+                encoder, bitrate = self.__get_ac3_args(selected_audio_track)
+            elif self.audio_format == "eac3":
+                encoder, bitrate = self.__get_eac3_args(selected_audio_track)
+            elif self.audio_format == "aac":
+                encoder, bitrate = self.__get_aac_args(selected_audio_track)
+            elif self.audio_format == "opus":
+                encoder, bitrate = self.__get_opus_args(selected_audio_track)
+            else:
+                exit(f"Unknown audio format: {self.audio_format}")
 
-                audio_args["track"].append(str(audio_track["TrackNumber"]))
-                audio_args["encoder"].append(encoder)
-                audio_args["bitrate"].append(bitrate)
+            audio_args = [
+                "--audio", str(selected_audio_track["TrackNumber"]),
+                "--aencoder", encoder,
+                *(["--ab", bitrate] if bitrate else [])]
+        else:
+            audio_args = []
+            language = None
 
-        tracks = ",".join(audio_args["track"])
-        encoders = ",".join(audio_args["encoder"])
-        bitrates = ",".join(audio_args["bitrate"])
-
-        audio_args = [
-            "--audio", tracks,
-            "--aencoder", encoders,
-            *(["--ab", bitrates] if bitrates else [])]
-
-        return audio_args
+        return audio_args, language
 
     @staticmethod
     def __get_ac3_args(audio_track):
@@ -465,43 +459,60 @@ class Transcoder:
 
     @staticmethod
     def __get_opus_args(audio_track):
-        if audio_track["ChannelCount"] > 2:
-            bitrate = "320"
-        elif audio_track["ChannelCount"] == 2:
-            bitrate = "96"
-        else:
-            bitrate = "64"
+        return "opus", 64 * audio_track["ChannelCount"]
 
-        return "opus", bitrate
+    def __get_subtitle_args(self, media_info, audio_lang):
+        subtitle_tracks = media_info["SubtitleList"]
 
-    def __get_subtitle_args(self, media_info):
-        added_subtitles = []
-        forced_subtitle = None
-        for subtitle in media_info["SubtitleList"]:
-            if self.subtitle == None or subtitle["TrackNumber"] in self.subtitle:
-                added_subtitles.append(str(subtitle["TrackNumber"]))
-                if not forced_subtitle and subtitle["Attributes"]["Forced"]:
-                    forced_subtitle = str(subtitle["TrackNumber"])
-        
-        if self.force_subtitle:
-            if str(self.force_subtitle) not in added_subtitles:
-                added_subtitles.append(str(self.force_subtitle))
-            
-            forced_subtitle = str(self.force_subtitle)
+        def find_forced_subtitle():
+            if self.forced_subtitle:
+                return self.forced_subtitle
 
-        if self.container == "mkv" and added_subtitles:
-            subtitle_args = [
-                "--subtitle", ",".join(added_subtitles),
-                "--subtitle-default=none"]
+            for track in subtitle_tracks:
+                if track["Attributes"]["Forced"]:
+                    return track["TrackNumber"]
 
-            if forced_subtitle:
-                subtitle_args += [f"--subtitle-burned={forced_subtitle}"]
-        elif self.container == "mp4" and added_subtitles and forced_subtitle:
-            subtitle_args = [
-                "--subtitle", forced_subtitle,
-                "--subtitle-burned"]
-        else:
-            subtitle_args = []
+            if audio_lang != "eng":
+                for track in subtitle_tracks:
+                    if track["LanguageCode"] == "eng":
+                        return track["TrackNumber"]
+
+            return None
+
+        def find_added_subtitle():
+            if self.subtitle:
+                return self.subtitle
+
+            for track in subtitle_tracks:
+                if track["LanguageCode"] == "eng":
+                    return track["TrackNumber"]
+
+            return None
+
+        forced_subtitle = find_forced_subtitle()
+        print(forced_subtitle)
+        added_subtitle = find_added_subtitle()
+
+        subtitles = []
+        if forced_subtitle:
+            subtitles.append(forced_subtitle)
+
+        if added_subtitle and added_subtitle != forced_subtitle:
+            subtitles.append(added_subtitle)
+
+            if not forced_subtitle:
+                subtitles.append(added_subtitle)
+
+        subtitle_args = []
+
+        if subtitles:
+            subtitle_args += ["--subtitle", ",".join(map(str, subtitles)), "--subtitle-default=none"]
+            if len(subtitles) == 2 or forced_subtitle:
+                subtitle_args.append("--subtitle-burned")
+
+            if len(subtitles) == 2 and not forced_subtitle:
+                # this makes HandBrake filter the subtitle track to only include forced subsections
+                subtitle_args.append("--subtitle-forced")
 
         return subtitle_args
     
