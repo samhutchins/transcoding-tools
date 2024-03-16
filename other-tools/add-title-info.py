@@ -9,8 +9,8 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("--name", required=True)
     parser.add_argument("--playlist", type=int, required=True)
-    parser.add_argument("--audio", type=int, nargs="+", default=[])
-    parser.add_argument("--subtitle", type=int, nargs="+", default=[])
+    parser.add_argument("--audio", type=int)
+    parser.add_argument("--subtitle", type=int)
     parser.add_argument("--force-subtitle", type=int)
     parser.add_argument("--crop")
 
