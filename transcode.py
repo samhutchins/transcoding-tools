@@ -459,7 +459,7 @@ class Transcoder:
 
     @staticmethod
     def __get_opus_args(audio_track):
-        return "opus", 64 * audio_track["ChannelCount"]
+        return "opus", str(64 * audio_track["ChannelCount"])
 
     def __get_subtitle_args(self, media_info, audio_lang):
         subtitle_tracks = media_info["SubtitleList"]
