@@ -72,7 +72,7 @@ class CropDetector:
             steps = int((duration / target_interval) - 1)
             interval = int(duration / (steps + 1))
 
-        video = [s for s in media_info["streams"] if s["codec_type"] == "video"][0]
+        video = [s for s in media_info["streams"] if s.get("codec_type", None) == "video"][0]
         width = int(video["width"])
         height = int(video["height"])
 
