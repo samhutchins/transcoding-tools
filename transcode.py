@@ -37,7 +37,7 @@ def main():
     output_options.add_argument("--1080p", dest="fit_1080", action="store_true", default=False,
                                 help="Restrict output to a 1080p frame")
     output_options.add_argument("--vf",  dest="video_format", metavar="FORMAT", choices=["hevc", "avc", "av1"], default="hevc", help="video format used in output. Default: hevc")
-    output_options.add_argument("--af", dest="audio_format", metavar="FORMAT", choices=["ac3", "eac3", "aac", "opus", "copy"], default="eac3", help="audio format used in output. Default: eac3. Note: ac3, eac3, aac, and opus are all passed through without transcoding")
+    output_options.add_argument("--af", dest="audio_format", metavar="FORMAT", choices=["ac3", "eac3", "aac", "opus", "copy"], default="aac", help="audio format used in output. Default: eac3. Note: ac3, eac3, aac, and opus are all passed through without transcoding")
 
     other_options = parser.add_argument_group("Other Options")
     other_options.add_argument("--debug", action="store_true", help="turn on debugging output")
@@ -102,7 +102,7 @@ class Transcoder:
         self.tonemap = False
         self.fit_1080 = False
         self.video_format = "hevc"
-        self.audio_format = "eac3"
+        self.audio_format = "aac"
 
         self.debug = False
 
@@ -393,22 +393,28 @@ class Transcoder:
             selected_audio_track = audio_tracks[audio_track_index - 1]
             language = selected_audio_track["LanguageCode"]
             if self.audio_format == "copy" or selected_audio_track["CodecName"] in ["ac3", "eac3", "aac", "opus"]:
-                encoder, bitrate = "copy", ""
+                encoder, bitrate, quality = "copy", "", ""
             elif self.audio_format == "ac3":
-                encoder, bitrate = self.__get_ac3_args(selected_audio_track)
+                encoder, bitrate, quality = self.__get_ac3_args(selected_audio_track)
             elif self.audio_format == "eac3":
-                encoder, bitrate = self.__get_eac3_args(selected_audio_track)
+                encoder, bitrate, quality = self.__get_eac3_args(selected_audio_track)
             elif self.audio_format == "aac":
-                encoder, bitrate = self.__get_aac_args(selected_audio_track)
+                encoder, bitrate, quality = self.__get_aac_args()
             elif self.audio_format == "opus":
-                encoder, bitrate = self.__get_opus_args(selected_audio_track)
+                encoder, bitrate, quality = self.__get_opus_args(selected_audio_track)
             else:
                 exit(f"Unknown audio format: {self.audio_format}")
 
             audio_args = [
                 "--audio", str(selected_audio_track["TrackNumber"]),
-                "--aencoder", encoder,
-                *(["--ab", bitrate] if bitrate else [])]
+                "--aencoder", encoder]
+
+            if quality:
+                audio_args += [
+                    "--aq", quality]
+            elif bitrate:
+                audio_args += [
+                    "--ab", bitrate]
         else:
             audio_args = []
             language = None
@@ -424,7 +430,7 @@ class Transcoder:
         else:
             bitrate = "96"
 
-        return "ac3", bitrate
+        return "ac3", bitrate, None
 
     @staticmethod
     def __get_eac3_args(audio_track):
@@ -435,10 +441,10 @@ class Transcoder:
         else:
             bitrate = "96"
 
-        return "eac3", bitrate
+        return "eac3", bitrate, None
 
     @staticmethod
-    def __get_aac_args(audio_track):
+    def __get_aac_args():
         handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
         handbrake_encoders = [x.strip() for x in handbrake_help.partition("Select audio encoder(s):")[2].partition("\"")[0].splitlines()]
         for encoder in ["ca_aac", "fdk_aac", "av_aac"]:
@@ -448,18 +454,16 @@ class Transcoder:
         else:
             exit("No AAC encoder found")
 
-        if audio_track["ChannelCount"] > 2:
-            bitrate = "384"
-        elif audio_track["ChannelCount"] == 2:
-            bitrate = "128"
+        if aac_encoder == "ca_aac":
+            quality = "90"
         else:
-            bitrate = "96"
+            quality = "4"
 
-        return aac_encoder, bitrate
+        return aac_encoder, None, quality
 
     @staticmethod
     def __get_opus_args(audio_track):
-        return "opus", str(64 * audio_track["ChannelCount"])
+        return "opus", str(64 * audio_track["ChannelCount"]), None
 
     def __get_subtitle_args(self, media_info, audio_lang):
         subtitle_tracks = media_info["SubtitleList"]
