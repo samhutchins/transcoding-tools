@@ -122,7 +122,9 @@ class Transcoder:
         return [
             "--crop", "0:0:0:0",
             "--non-anamorphic",
-            "--maxWidth", "1920"]
+            "--maxWidth", "1920",
+            "--colorspace", "bt709",
+            "--comb-detect", "--decomb"]
 
     @staticmethod
     def __get_video_args():
