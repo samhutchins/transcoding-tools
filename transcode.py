@@ -134,6 +134,7 @@ class Transcoder:
 
         command = [
             "HandBrakeCLI",
+            "--keep-duplicate-titles",
             "--no-dvdnav",
             "--output", output_file,
             "--previews", "1",
@@ -175,7 +176,7 @@ class Transcoder:
             print("HandBrake version line: " + hb_version)
 
         if re.match("\\d\\.\\d\\.\\d", hb_version):
-            major, minor, patch = 1, 6, 1
+            major, minor, patch = 1, 9, 0
             hb_major, hb_minor, hb_patch = [int(x) for x in hb_version.split(".")]
             if hb_major > major or (hb_major == major and hb_minor > minor) or (
                     hb_major == major and hb_minor == minor and hb_patch >= patch):
@@ -183,7 +184,7 @@ class Transcoder:
             else:
                 exit(f"Unsupported version of HandBrake: {hb_version}, requires version >= {major}.{minor}.{patch}")
         elif re.match("\\d{14}-.*", hb_version):
-            year, month, day = 2023, 1, 4  # df57d7b5a5d344f6e85cc398ea5c67cf8de9e05c
+            year, month, day = 2024, 10, 13  # 1eead5a9eaa9203da6f4d3c8368b9a461f687adc
             hb_year, hb_month, hb_day = int(hb_version[:4]), int(hb_version[4:6]), int(hb_version[6:8])
             if hb_year > year or (hb_year == year and hb_month > month) or (hb_year == year and hb_month == month and hb_day >= day):
                 print(f"Found HandBrake {hb_version}")
@@ -201,6 +202,7 @@ class Transcoder:
             scan_command = ["HandBrakeCLI",
                             "--json",
                             "--scan",
+                            "--keep-duplicate-titles",
                             "--crop-mode", "conservative",
                             "--previews", str(previews)]
             
@@ -257,6 +259,7 @@ class Transcoder:
         command = [
             "HandBrakeCLI",
             "--scan",
+            "--keep-duplicate-titles",
             "-t", "0",
             "--min-duration", "9000",  # large number to stop HandBrake from _actually_ scanning anything
             "--input", input_folder
