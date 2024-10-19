@@ -7,6 +7,8 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from subprocess import DEVNULL, PIPE, run, CalledProcessError
 from sys import exit
+import shlex
+import re
 
 
 def main():
@@ -31,6 +33,7 @@ def main():
 
     transcoder = Transcoder()
     transcoder.debug = args.debug
+    transcoder.dry_run = args.dry_run
     for file in args.file:
         transcoder.transcode(file)
 
@@ -38,6 +41,7 @@ def main():
 class Transcoder:
     def __init__(self):
         self.debug = False
+        self.dry_run = False
 
     def transcode(self, input_file):
         if not os.path.exists(input_file):
@@ -47,14 +51,13 @@ class Transcoder:
             exit("Folder inputs are not supported")
 
         output_file = os.path.splitext(os.path.basename(input_file))[0] + ".mp4"
-        if os.path.exists(output_file):
+        if os.path.exists(output_file) and not self.dry_run:
             exit(f"Output file exists: {output_file}")
 
         media_info = self.__scan_media(input_file)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_out = os.path.join(tmp_dir, "intermediate.mp4")
-            print(tmp_dir)
 
             handbrake_command = [
                 "HandBrakeCLI",
@@ -65,9 +68,14 @@ class Transcoder:
                 "--markers"
             ]
 
-            handbrake_command += self.__get_picture_args()
+            handbrake_command += self.__get_picture_args(media_info)
             handbrake_command += self.__get_video_args()
             handbrake_command += self.__get_audio_args(media_info)
+
+            print(" ".join(map(lambda x: shlex.quote(x), handbrake_command)))
+
+            if self.dry_run:
+                return
 
             try:
                 run(handbrake_command, stderr=DEVNULL).check_returncode()
@@ -115,20 +123,59 @@ class Transcoder:
 
         media_info = full_media_info["TitleList"][main_title]
 
+        # Can't trust HandBrake's default InterlaceDetected behaviour, we need to check ourselves
+        interlaced = False
+        video_line_regex = re.compile(b"^.*?Stream.*?Video.*$", re.MULTILINE)
+        regex_result = video_line_regex.search(command_output.stderr)
+        if regex_result:
+            start, end = regex_result.span()
+            video_line = command_output.stderr[start:end]
+            if self.debug:
+                print("Video Line: " + video_line.decode())
+            interlaced = b"top first" in video_line or b"bottom first" in video_line
+        elif self.debug:
+            print("Video line regex didn't find anything")
+
+        if self.debug:
+            print(f"Interlace detected: {interlaced}")
+
+        media_info["InterlaceDetected"] = interlaced
+
+        # detecting HDR properly is a bit involved, but for what I'm doing I only need to detect HDR in videos from an iPhone
+        # If the video line contains arib-std-b67, it's HDR
+        media_info["HdrDetected"] = b"arib-std-b67" in video_line
+        if self.debug:
+            print(f"HdrDetected: {media_info['HdrDetected']}")
+
         return media_info
 
     @staticmethod
-    def __get_picture_args():
+    def __get_picture_args(media_info):
+        geometry = media_info["Geometry"]
+        is_landscape = geometry["Width"] >= geometry["Height"]
+
+        if is_landscape:
+            max_dimension_args = ["--maxWidth", "1920", "--maxHeight", "1080"]
+        else:
+            max_dimension_args = ["--maxWidth", "1080", "--maxHeight", "1920"]
+        
+        filters = []
+        if media_info["InterlaceDetected"]:
+            filters.extend(["--comb-detect", "--decomb"])
+
+        if media_info["HdrDetected"]:
+            filters.extend(["--colorspace", "bt709"])
+
         return [
             "--crop", "0:0:0:0",
             "--non-anamorphic",
-            "--maxWidth", "1920",
-            "--colorspace", "bt709",
-            "--comb-detect", "--decomb"]
+            *max_dimension_args,
+            *filters]
 
     @staticmethod
     def __get_video_args():
         return [
+            "-r", "30",
             "-b", "6000",
             "--enable-hw-decoding", "videotoolbox",
             "--encoder", "vt_h264",
