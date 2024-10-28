@@ -203,10 +203,16 @@ class Transcoder:
         audio_streams = [x for x in stream_info if x["codec_type"] == "audio"]
 
         for i, audio in enumerate(audio_streams):
-            if audio["codec_name"] != "aac":
+            if audio["channels"] > 2:
+                audio_args += [
+                    f"-ac:a:{i}", "2",
+                    f"-c:a:{i}", "aac_at"]
+            elif audio["codec_name"] != "aac":
                 audio_args += [f"-c:a:{i}", "aac_at"]
             else:
                 audio_args += [f"-c:a:{i}", "copy"]
+            
+            audio_args += [f"-metadata:s:a:{i}", "language=eng"]
         
         if self.debug:
             print(audio_args)
