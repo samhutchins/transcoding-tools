@@ -7,7 +7,7 @@
 # is there any benefit to making an ISO out of this?
 
 from argparse import ArgumentParser
-from subprocess import Popen, PIPE, DEVNULL
+from subprocess import Popen, PIPE, DEVNULL, run
 from io import StringIO
 import csv
 import shlex
@@ -15,16 +15,19 @@ import sys
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("source")
+    parser.add_argument("source", nargs="?", default="0")
+    parser.add_argument("--dvd", action="store_true")
 
     args = parser.parse_args()
 
     ripper = Ripper()
-    ripper.backup(args.source)
+    ripper.backup(args.source, args.dvd)
 
 
 class Ripper:
-    def backup(self, device: str) -> None:
+    def backup(self, device: str, dvd: bool = False) -> None:
+        filename = self.__get_filename(device, dvd)
+
         command = [
             "makemkvcon",
             "backup",
@@ -33,7 +36,7 @@ class Ripper:
             "-r",
             "--progress=-same",
             f"disc:{device}",
-            "."
+            f"./{filename}"
         ]
 
         print(" ".join(map(lambda x: shlex.quote(x), command)))
@@ -43,12 +46,26 @@ class Ripper:
                 if p.poll() is not None:
                     break
 
-                line = p.stdout.readline().decode().strip()
-
-                prefix, _, line = line.partition(":")
-                self.__handle_progress(prefix, line)
+                if p.stdout:
+                    line = p.stdout.readline().decode().strip()
+                    prefix, _, line = line.partition(":")
+                    self.__handle_progress(prefix, line)
                 
         print("\nDone.")
+
+    def __get_filename(self, device: str, dvd: bool) -> str:
+        command = ["makemkvcon", "-r", "info", "disc:9999"]
+        command_output = run(command, stdout=PIPE, stderr=DEVNULL).stdout.decode()
+
+        for line in command_output.splitlines():
+            if line.startswith(f"DRV:{device}"):
+                filename = self.__csv_split(line)[5]
+                if dvd:
+                    filename += ".iso"
+                
+                return filename
+        else:
+            exit("Dang")
 
     def __handle_progress(self, prefix, line):
         if prefix == "PRGT":
