@@ -126,9 +126,7 @@ class Transcoder:
         display_matrix = [ x for x in video.get("side_data_list", []) if x["side_data_type"] == "Display Matrix"]
         
         if display_matrix and display_matrix[0]["rotation"] in [-90, 90]:
-            tmp = width
-            width = height
-            height = tmp
+            width, height = height, width
             
         landscape = width >= height
 
