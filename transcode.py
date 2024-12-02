@@ -40,6 +40,7 @@ def main():
     output_options.add_argument("--af", dest="audio_format", metavar="FORMAT", choices=["ac3", "eac3", "aac", "opus", "copy"], default="aac", help="audio format used in output. Default: eac3. Note: ac3, eac3, aac, and opus are all passed through without transcoding")
 
     other_options = parser.add_argument_group("Other Options")
+    other_options.add_argument("--hw", action="store_true", help="use a hardware encoder if possible")
     other_options.add_argument("--debug", action="store_true", help="turn on debugging output")
     other_options.add_argument("-h", "--help", action="help", help="print this message and exit")
 
@@ -85,6 +86,7 @@ def __create_transcoder(args):
     transcoder.debug = args.debug
     transcoder.video_format = args.video_format
     transcoder.audio_format = args.audio_format
+    transcoder.try_hw = args.hw
 
     return transcoder
 
@@ -103,8 +105,12 @@ class Transcoder:
         self.fit_1080 = False
         self.video_format = "hevc"
         self.audio_format = "aac"
+        self.try_hw = False
 
         self.debug = False
+
+        self.__handbrake_audio_encoders = None
+        self.__handbrake_video_encoders = None
 
     def transcode(self, input_file):
         if not os.path.exists(input_file):
@@ -192,6 +198,14 @@ class Transcoder:
                 exit(f"Unsupported nightly: {hb_version}, requires builds since {year}-{month}-{day}")
         else:
             print(f"WARN: Unable to check HandBrake version ({hb_version})")
+
+        handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
+        self.__handbrake_audio_encoders = [x.strip() for x in handbrake_help.partition("Select audio encoder(s):")[2].partition("\"")[0].splitlines()]
+        self.__handbrake_video_encoders = [x.strip() for x in handbrake_help.partition("Select video encoder:")[2].partition("--")[0].splitlines()]
+
+        if self.debug:
+            print(f"{self.__handbrake_audio_encoders=}")
+            print(f"{self.__handbrake_video_encoders=}")
 
     def __scan_media(self, input_file):
         if input_file.endswith(".mpls"):
@@ -351,6 +365,21 @@ class Transcoder:
             "--encopts", "ratetol=inf:mbtree=0"]
 
     def __get_hevc_args(self, media_info):
+        hevc_encoder = "x265_10bit"
+        if self.try_hw:
+            for encoder in ["vt_h265_10bit"]:
+                if encoder in self.__handbrake_video_encoders:
+                    hevc_encoder = encoder
+                    break
+
+        if hevc_encoder == "x265_10bit":
+            return self.__get_x265_args(media_info)
+        elif hevc_encoder == "vt_h265_10bit":
+            return self.__get_vt_h265_args(media_info)
+        else:
+            raise ValueError(hevc_encoder)
+
+    def __get_x265_args(self, media_info):
         geometry = media_info["Geometry"]
         if not self.fit_1080 and (geometry["Width"] > 1920 or geometry["Height"] > 1080):
             level = "5.0" if not self.preserve_field_rate else "5.1"
@@ -368,6 +397,23 @@ class Transcoder:
             "--encoder-profile", "main10",
             "--encoder-preset", "slow",
             "--encopts", "cutree=0:sao=0:aq-mode=1:rskip=2:rskip-edge-threshold=2"]
+
+    def __get_vt_h265_args(self, media_info):
+        geometry = media_info["Geometry"]
+        if not self.fit_1080 and (geometry["Width"] > 1920 or geometry["Height"] > 1080):
+            quality = 60
+        elif geometry["Width"] > 1280 or geometry["Height"] > 720:
+            quality = 65
+        else:
+            quality = 70
+
+        return [
+            "--enable-hw-decoding", "videotoolbox",
+            "-q", str(quality),
+            "--encoder", "vt_h265_10bit",
+            "--encoder-level", "auto",
+            "--encoder-profile", "main10",
+            "--encoder-preset", "quality"]
 
     def __get_av1_args(self, media_info):
         geometry = media_info["Geometry"]
@@ -446,19 +492,16 @@ class Transcoder:
 
         return "eac3", bitrate, None
 
-    @staticmethod
-    def __get_aac_args():
-        handbrake_help = run(["HandBrakeCLI", "--help"], stdout=PIPE, stderr=DEVNULL, universal_newlines=True).stdout
-        handbrake_encoders = [x.strip() for x in handbrake_help.partition("Select audio encoder(s):")[2].partition("\"")[0].splitlines()]
+    def __get_aac_args(self):
         for encoder in ["ca_aac", "fdk_aac", "av_aac"]:
-            if encoder in handbrake_encoders:
+            if encoder in self.__handbrake_audio_encoders:
                 aac_encoder = encoder
                 break
         else:
             exit("No AAC encoder found")
 
         if aac_encoder == "ca_aac":
-            quality = "90"
+            quality = "60"
         else:
             quality = "4"
 
