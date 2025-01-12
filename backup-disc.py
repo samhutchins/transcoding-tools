@@ -11,7 +11,7 @@ from subprocess import Popen, PIPE, DEVNULL, run
 from io import StringIO
 import csv
 import shlex
-import sys
+import shutil
 
 def main() -> None:
     parser = ArgumentParser()
@@ -21,7 +21,11 @@ def main() -> None:
     args = parser.parse_args()
 
     ripper = Ripper()
-    ripper.backup(args.source, args.dvd)
+    try:
+        ripper.backup(args.source, args.dvd)
+    finally:
+        if shutil.which("drutil"):
+            run(["drutil", "eject"])
 
 
 class Ripper:
