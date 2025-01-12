@@ -17,17 +17,20 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("file")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--deep", action="store_true")
 
     args = parser.parse_args()
 
     inspector = Inspector()
     inspector.debug = args.debug
+    inspector.deep_inspect = args.deep
     inspector.inspect(args.file)
 
 
 class Inspector:
     def __init__(self):
         self.debug = False
+        self.deep_inspect = False
 
     def inspect(self, file):
         if not os.path.exists(file):
@@ -105,7 +108,8 @@ class Inspector:
             with open(cache_file, "rb") as f:
                 try:
                     ffprobe_cache = pickle.load(f)
-                except:
+                except Exception as e:
+                    print(e)
                     ffprobe_cache = dict()
         else:
             ffprobe_cache = dict()
@@ -126,13 +130,15 @@ class Inspector:
                 all_subtitle_mkvmerge_info.append(track)
 
         for segment in set(mkvmerge_info["container"]["properties"]["playlist_file"]):
+            segment = str(Path(segment).relative_to(Path(playlist).parent.parent.parent.absolute()))
             if segment in ffprobe_cache:
                 format_info, stream_info, frame_info = ffprobe_cache[segment]
             else:
                 format_info, stream_info, frame_info = self.__ffprobe(segment)
-                subtitle_stats = self.__read_track_statistics(segment)
-                stream_info[:] = [stream for stream in stream_info if stream["codec_type"] != "subtitle"]
-                stream_info.extend(subtitle_stats)
+                if self.deep_inspect:
+                    subtitle_stats = self.__read_track_statistics(segment)
+                    stream_info[:] = [stream for stream in stream_info if stream["codec_type"] != "subtitle"]
+                    stream_info.extend(subtitle_stats)
                 ffprobe_cache[segment] = (format_info, stream_info, frame_info)
 
             all_format_info.append(format_info)
@@ -433,7 +439,7 @@ class Subtitle:
         subtitle.index = index
         subtitle.language = mkvmerge_info["properties"]["language"]
         subtitle.codec = stream[0]["codec_name"]
-        subtitle.count = sum([int(stream["nb_read_frames"]) for stream in stream])
+        subtitle.count = sum([int(stream.get("nb_read_frames", "0")) for stream in stream])
 
         return subtitle
 
