@@ -19,7 +19,7 @@ def main():
         add_help=False)
 
     input_options = parser.add_argument_group("Input Options")
-    input_options.add_argument("file", metavar="FILE", help="path to a source file")
+    input_options.add_argument("file", metavar="FILE", nargs="+", help="path to a source file")
     input_options.add_argument("-a", "--audio", nargs="+", type=int, help="Select audio tracks. Default: all tracks")
     input_options.add_argument("-s", "--subtitle", nargs="+", type=int, help="Select subtitle tracks. Default: all tracks")
     input_options.add_argument("-f", "--force-subtitle", type=int, help="Force (burn) a subtitle track. Default: based on input")
@@ -46,30 +46,31 @@ def main():
 
     args = parser.parse_args()
 
-    if os.path.basename(args.file) == "title_info.json":
-        with open(args.file, "r") as f:
-            title_info = json.load(f)
+    for file in args.file:
+        if os.path.basename(file) == "title_info.json":
+            with open(file, "r") as f:
+                title_info = json.load(f)
 
-        for title in title_info:
+            for title in title_info:
+                transcoder = __create_transcoder(args)
+                transcoder.output_name = title["name"]
+                if not args.audio:
+                    transcoder.audio = title["audio"]
+
+                if not args.subtitle:
+                    transcoder.subtitle = title["subtitle"]
+
+                if not args.force_subtitle:
+                    transcoder.forced_subtitle = title["forced_subtitle"]
+
+                if not args.crop:
+                    transcoder.crop = title["crop"]
+
+                input_file = Path(file).parent / "BDMV" / "PLAYLIST" / f"{title['playlist']:05}.mpls"
+                transcoder.transcode(str(input_file))
+        else:
             transcoder = __create_transcoder(args)
-            transcoder.output_name = title["name"]
-            if not args.audio:
-                transcoder.audio = title["audio"]
-            
-            if not args.subtitle:
-                transcoder.subtitle = title["subtitle"]
-
-            if not args.force_subtitle:
-                transcoder.forced_subtitle = title["forced_subtitle"]
-
-            if not args.crop:
-                transcoder.crop = title["crop"]
-
-            input_file = Path(args.file).parent / "BDMV" / "PLAYLIST" / f"{title['playlist']:05}.mpls"
-            transcoder.transcode(str(input_file))
-    else:
-        transcoder = __create_transcoder(args)
-        transcoder.transcode(args.file)
+            transcoder.transcode(file)
 
 
 def __create_transcoder(args):
@@ -408,7 +409,6 @@ class Transcoder:
             quality = 70
 
         return [
-            "--enable-hw-decoding", "videotoolbox",
             "-q", str(quality),
             "--encoder", "vt_h265_10bit",
             "--encoder-level", "auto",
@@ -431,7 +431,7 @@ class Transcoder:
             "--encoder", "svt_av1_10bit",
             "--encoder-level", level,
             "--encoder-profile", "main",
-            "--encoder-preset", "5",
+            "--encoder-preset", "4",
             "--encopts", "enable-qm=1:qm-min=0"]
 
     def __get_audio_args(self, media_info):
@@ -540,7 +540,6 @@ class Transcoder:
             return None
 
         forced_subtitle = find_forced_subtitle()
-        print(forced_subtitle)
         added_subtitle = find_added_subtitle()
 
         subtitles = []
